@@ -1,5 +1,7 @@
 extends Control
-## Step 1: a runnable, honest engineering baseline. Gameplay starts at step 2.
+## Step 2: one farm state drives the map, movement and terrain inspector.
+
+const FarmView = preload("res://scripts/world/farm_view.gd")
 
 const BACKGROUND := Color("101b22")
 const PANEL := Color("1a2a33")
@@ -11,29 +13,15 @@ const ACCENT := Color("a9c18b")
 var _qa_frames: int = 0
 var _smoke_test: bool = false
 var _capture_path: String = ""
-
-
-class GridPreview extends Control:
-
-	func _draw() -> void:
-		var cell: float = floorf(minf(size.x, size.y) / 24.0)
-		var origin := ((size - Vector2.ONE * cell * 24.0) / 2.0).floor()
-		for y in range(24):
-			for x in range(24):
-				var color := Color("30483b") if (x + y) % 2 == 0 else Color("334c3e")
-				if x == 5 or y == 13:
-					color = Color("82765b")
-				if x >= 7 and x <= 12 and y >= 7 and y <= 10:
-					color = Color("775c43")
-				var rect := Rect2(origin + Vector2(x, y) * cell, Vector2.ONE * cell)
-				draw_rect(rect, color)
-				draw_rect(rect, Color(0, 0, 0, 0.12), false, 1.0)
-		var grid_rect := Rect2(origin, Vector2.ONE * cell * 24.0)
-		draw_rect(grid_rect, Color("687c6b"), false, 2.0)
-
-	func _ready() -> void:
-		resized.connect(queue_redraw)
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
+var farm_view: FarmView
+var _selected_title: Label
+var _selected_coords: Label
+var _tile_description: Label
+var _terrain_properties: Label
+var _player_label: Label
+var _hover_label: Label
+var _feedback_label: Label
+var _grid_button: Button
 
 
 func _ready() -> void:
@@ -100,6 +88,14 @@ func _panel() -> PanelContainer:
 	return panel
 
 
+func _button(text_value: String, action: Callable) -> Button:
+	var button := Button.new()
+	button.text = text_value
+	button.focus_mode = Control.FOCUS_NONE
+	button.pressed.connect(action)
+	return button
+
+
 func _build_interface() -> void:
 	var background := ColorRect.new()
 	background.color = BACKGROUND
@@ -126,7 +122,7 @@ func _build_interface() -> void:
 	var title := _label("田野工程师  Fieldworks", 26)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(title)
-	header.add_child(_label("原型开发 · 第 1 步", 18, ACCENT))
+	header.add_child(_label("第 2 步 · 农场与角色", 18, ACCENT))
 	var body := HBoxContainer.new()
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	body.add_theme_constant_override("separation", 24)
@@ -138,39 +134,77 @@ func _build_interface() -> void:
 	preview_column.add_theme_constant_override("separation", 12)
 	preview_panel.add_child(preview_column)
 	preview_column.add_child(_label("农场试验区", 22))
-	preview_column.add_child(_label("24 × 24 网格 · 工程显示验证", 16, MUTED))
-	var grid := GridPreview.new()
-	grid.name = "GridPreview"
-	grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	grid.custom_minimum_size = Vector2(500, 500)
-	preview_column.add_child(grid)
-	preview_column.add_child(_paragraph("这是运行基础预览。角色、地块交互和种植将按开发流程逐步实现。", 16))
+	preview_column.add_child(_label("24 × 24 地块 · 沿道路探索，点击地块检查", 16, MUTED))
+	farm_view = FarmView.new()
+	farm_view.name = "FarmView"
+	farm_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	farm_view.custom_minimum_size = Vector2(540, 540)
+	farm_view.tile_selected.connect(_refresh_inspector)
+	farm_view.player_moved.connect(_refresh_player)
+	farm_view.hovered_cell_changed.connect(_refresh_hover)
+	farm_view.feedback.connect(_show_feedback)
+	preview_column.add_child(farm_view)
+	_hover_label = _label("鼠标移入农场可以查看地块位置。", 16, MUTED)
+	preview_column.add_child(_hover_label)
 	var progress_panel := _panel()
 	progress_panel.custom_minimum_size.x = 370
 	body.add_child(progress_panel)
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 14)
 	progress_panel.add_child(column)
-	column.add_child(_label("工程已就绪", 24, ACCENT))
-	column.add_child(_paragraph("开发按步骤推进，每一步实现后验证，再更新进度。"))
-	column.add_child(_space(12))
-	column.add_child(_label("当前基础", 19))
-	column.add_child(_paragraph("Godot 4.7.2 · GDScript\nCompatibility 渲染\n中文界面与窗口缩放\n本地启动与运行检查", 18, TEXT))
-	column.add_child(_space(12))
-	column.add_child(_label("接下来的步骤", 19))
-	column.add_child(_paragraph("2  地图、角色与基本操作\n3  地块、工具与交互反馈\n4  时间、天气与水分\n5  作物生命周期\n6  库存、出售与资金", 18))
+	column.add_child(_label("地块检查", 22))
+	_selected_coords = _label("", 17, MUTED)
+	column.add_child(_selected_coords)
+	_selected_title = _label("", 26, ACCENT)
+	column.add_child(_selected_title)
+	_terrain_properties = _label("", 18)
+	column.add_child(_terrain_properties)
+	_tile_description = _paragraph("", 18)
+	_tile_description.custom_minimum_size.y = 72
+	column.add_child(_tile_description)
+	column.add_child(HSeparator.new())
+	_player_label = _label("", 18)
+	column.add_child(_player_label)
+	column.add_child(_paragraph("WASD / 方向键  移动\n鼠标左键  选中并检查地块\nG  显示网格    R  回到入口", 17))
+	_grid_button = _button("显示地块网格  [G]", farm_view.toggle_grid)
+	column.add_child(_grid_button)
+	column.add_child(_button("回到农场入口  [R]", farm_view.reset_player))
+	column.add_child(HSeparator.new())
+	column.add_child(_label("当前进度", 18))
+	column.add_child(_paragraph("地图、角色移动与地块检查已接通。下一步加入锄地、选种和工具栏。", 17))
 	var filler := Control.new()
 	filler.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	column.add_child(filler)
-	var open_plan := Button.new()
-	open_plan.text = "打开开发流程文档"
-	open_plan.pressed.connect(func() -> void: OS.shell_open(ProjectSettings.globalize_path("res://开发流程与任务拆解.md")))
-	column.add_child(open_plan)
-	var close_button := Button.new()
-	close_button.text = "退出预览"
-	close_button.pressed.connect(func() -> void: get_tree().quit())
-	column.add_child(close_button)
-	root.add_child(_label("第一版目标：手工种植经营 → 模块化灌溉 → 传感反馈控制 → 实验与故障诊断", 17, MUTED))
+	column.add_child(_button("打开开发流程文档", func() -> void: OS.shell_open(ProjectSettings.globalize_path("res://开发流程与任务拆解.md"))))
+	column.add_child(_button("退出农场", func() -> void: get_tree().quit()))
+	_feedback_label = _label("沿道路走一走，或点击池塘、农舍和试验田检查它们。", 17, MUTED)
+	root.add_child(_feedback_label)
+	_refresh_inspector(farm_view.selected_cell)
+	_refresh_player(farm_view.player.cell())
+
+
+func _refresh_inspector(cell: Vector2i) -> void:
+	var info := farm_view.farm.describe(cell)
+	_selected_coords.text = "地块坐标  (%02d, %02d)" % [cell.x + 1, cell.y + 1]
+	_selected_title.text = info.name
+	_terrain_properties.text = "%s · %s" % ["可通行" if info.walkable else "不可通行", "可耕地" if info.arable else "不可耕作"]
+	_tile_description.text = info.description
+
+
+func _refresh_player(cell: Vector2i) -> void:
+	_player_label.text = "角色位置  (%02d, %02d)" % [cell.x + 1, cell.y + 1]
+
+
+func _refresh_hover(cell: Vector2i) -> void:
+	if farm_view.farm.contains(cell):
+		_hover_label.text = "悬停地块  (%02d, %02d) · %s" % [cell.x + 1, cell.y + 1, farm_view.farm.describe(cell).name]
+	else:
+		_hover_label.text = "鼠标移入农场可以查看地块位置。"
+
+
+func _show_feedback(message: String) -> void:
+	_feedback_label.text = message
+	_grid_button.text = "%s地块网格  [G]" % ("隐藏" if farm_view.show_grid else "显示")
 
 
 func _process(_delta: float) -> void:

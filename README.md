@@ -12,7 +12,21 @@
 
 先阅读 [开发流程与任务拆解](开发流程与任务拆解.md)，其中记录分步操作、产出、验收条件和实际进度。补充技术基准见 [开发基准](docs/DEVELOPMENT.md)。
 
-第 0 步设计拆解与第 1 步工程建立、启动验证已完成，下一步是地图、角色与基本操作。运行后显示工程基础预览，角色、种植、灌溉和自动化仍待后续步骤实现。实际检查结果见 [验证记录](docs/TEST_REPORT.md)。
+第 0～2 步已完成：设计拆解、工程基础，以及能移动和检查地块的 24×24 农场。地图包含农舍、池塘、道路、预留种植区、树木、岩石与围栏，障碍会实际阻挡角色。下一步加入地块工具与交互反馈。实际检查结果见 [验证记录](docs/TEST_REPORT.md)。
+
+当前尚未实现耕作、作物生长、交易、存档与灌溉；这些功能按流程逐步加入。
+
+## 当前操作
+
+| 操作 | 按键 / 鼠标 |
+| --- | --- |
+| 移动角色 | WASD 或方向键 |
+| 选择和检查地块 | 鼠标左键 |
+| 查看悬停地块 | 将鼠标移到地图上 |
+| 显示 / 隐藏地块网格 | G，或右侧按钮 |
+| 回到农场入口 | R，或右侧按钮 |
+
+检查面板中的坐标从 1 开始；水域、农舍、树木、岩石与边界围栏不可通行。当前支持键盘移动，鼠标点击用于检查地块。
 
 ## 在 Windows 上启动
 
@@ -30,7 +44,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start-game.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\start-game.ps1 -Editor
 ```
 
-检查工程导入与无界面启动：
+检查工程导入、无界面启动，以及地图、碰撞和点击定位：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\check-project.ps1

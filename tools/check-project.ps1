@@ -8,6 +8,7 @@ if (-not (Test-Path -LiteralPath $engineExecutable)) {
 Set-Content -LiteralPath (Join-Path (Split-Path -Parent $engineExecutable) '_sc_') -Value ''
 $qaDirectory = Join-Path $projectRoot 'tmp\qa'
 New-Item -ItemType Directory -Path $qaDirectory -Force | Out-Null
+Set-Content -LiteralPath (Join-Path $projectRoot 'tmp\.gdignore') -Value ''
 
 function Invoke-GodotCheck {
     param([string]$CheckName, [string[]]$EngineArguments, [string]$SuccessMarker = '')
@@ -26,4 +27,5 @@ function Invoke-GodotCheck {
 
 Invoke-GodotCheck -CheckName 'import' -EngineArguments @('--headless', '--path', $projectRoot, '--editor', '--import')
 Invoke-GodotCheck -CheckName 'boot' -EngineArguments @('--headless', '--path', $projectRoot, '--', '--smoke-test') -SuccessMarker 'FIELDWORKS_BOOT_OK'
-Write-Host 'PASS: project import and headless startup.'
+Invoke-GodotCheck -CheckName 'world' -EngineArguments @('--headless', '--path', $projectRoot, '--script', 'res://tests/test_world.gd') -SuccessMarker 'FIELDWORKS_WORLD_TESTS_OK'
+Write-Host 'PASS: project import, headless startup and world behaviour checks.'
