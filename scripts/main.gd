@@ -1,7 +1,8 @@
 extends Control
-## Step 2: one farm state drives the map, movement and terrain inspector.
+## Step 3: tools and supply counts act on the same state as the map and inspector.
 
 const FarmView = preload("res://scripts/world/farm_view.gd")
+const ToolBar = preload("res://scripts/ui/tool_bar.gd")
 
 const BACKGROUND := Color("101b22")
 const PANEL := Color("1a2a33")
@@ -14,6 +15,7 @@ var _qa_frames: int = 0
 var _smoke_test: bool = false
 var _capture_path: String = ""
 var farm_view: FarmView
+var tool_bar: ToolBar
 var _selected_title: Label
 var _selected_coords: Label
 var _tile_description: Label
@@ -22,6 +24,7 @@ var _player_label: Label
 var _hover_label: Label
 var _feedback_label: Label
 var _grid_button: Button
+var _plot_details: Label
 
 
 func _ready() -> void:
@@ -122,7 +125,7 @@ func _build_interface() -> void:
 	var title := _label("田野工程师  Fieldworks", 26)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(title)
-	header.add_child(_label("第 2 步 · 农场与角色", 18, ACCENT))
+	header.add_child(_label("第 3 步 · 地块与工具", 18, ACCENT))
 	var body := HBoxContainer.new()
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	body.add_theme_constant_override("separation", 24)
@@ -134,11 +137,11 @@ func _build_interface() -> void:
 	preview_column.add_theme_constant_override("separation", 12)
 	preview_panel.add_child(preview_column)
 	preview_column.add_child(_label("农场试验区", 22))
-	preview_column.add_child(_label("24 × 24 地块 · 沿道路探索，点击地块检查", 16, MUTED))
+	preview_column.add_child(_label("24 × 24 地块 · 走近目标，选择工具后左键操作", 16, MUTED))
 	farm_view = FarmView.new()
 	farm_view.name = "FarmView"
 	farm_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	farm_view.custom_minimum_size = Vector2(540, 540)
+	farm_view.custom_minimum_size = Vector2(480, 440)
 	farm_view.tile_selected.connect(_refresh_inspector)
 	farm_view.player_moved.connect(_refresh_player)
 	farm_view.hovered_cell_changed.connect(_refresh_hover)
@@ -146,11 +149,15 @@ func _build_interface() -> void:
 	preview_column.add_child(farm_view)
 	_hover_label = _label("鼠标移入农场可以查看地块位置。", 16, MUTED)
 	preview_column.add_child(_hover_label)
+	tool_bar = ToolBar.new()
+	tool_bar.name = "ToolBar"
+	tool_bar.setup(farm_view.tools)
+	preview_column.add_child(tool_bar)
 	var progress_panel := _panel()
 	progress_panel.custom_minimum_size.x = 370
 	body.add_child(progress_panel)
 	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", 14)
+	column.add_theme_constant_override("separation", 10)
 	progress_panel.add_child(column)
 	column.add_child(_label("地块检查", 22))
 	_selected_coords = _label("", 17, MUTED)
@@ -159,25 +166,40 @@ func _build_interface() -> void:
 	column.add_child(_selected_title)
 	_terrain_properties = _label("", 18)
 	column.add_child(_terrain_properties)
+	_plot_details = _paragraph("", 17, TEXT)
+	_plot_details.custom_minimum_size.y = 70
+	column.add_child(_plot_details)
 	_tile_description = _paragraph("", 18)
-	_tile_description.custom_minimum_size.y = 72
 	column.add_child(_tile_description)
 	column.add_child(HSeparator.new())
 	_player_label = _label("", 18)
 	column.add_child(_player_label)
-	column.add_child(_paragraph("WASD / 方向键  移动\n鼠标左键  选中并检查地块\nG  显示网格    R  回到入口", 17))
-	_grid_button = _button("显示地块网格  [G]", farm_view.toggle_grid)
-	column.add_child(_grid_button)
-	column.add_child(_button("回到农场入口  [R]", farm_view.reset_player))
+	column.add_child(_paragraph("WASD / 方向键 移动\n1–5 选工具 · Q 选种子\n左键使用工具 · 右键仅检查", 17))
+	var utility_row := HBoxContainer.new()
+	utility_row.add_theme_constant_override("separation", 8)
+	_grid_button = _button("网格 [G]", farm_view.toggle_grid)
+	_grid_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	utility_row.add_child(_grid_button)
+	var reset_button := _button("回到入口 [R]", farm_view.reset_player)
+	reset_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	utility_row.add_child(reset_button)
+	column.add_child(utility_row)
 	column.add_child(HSeparator.new())
 	column.add_child(_label("当前进度", 18))
-	column.add_child(_paragraph("地图、角色移动与地块检查已接通。下一步加入锄地、选种和工具栏。", 17))
+	column.add_child(_paragraph("已开放锄地、播种与浇水。\n当前作物暂不生长；时间与天气将在下一阶段加入。", 17))
 	var filler := Control.new()
 	filler.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	column.add_child(filler)
-	column.add_child(_button("打开开发流程文档", func() -> void: OS.shell_open(ProjectSettings.globalize_path("res://开发流程与任务拆解.md"))))
-	column.add_child(_button("退出农场", func() -> void: get_tree().quit()))
-	_feedback_label = _label("沿道路走一走，或点击池塘、农舍和试验田检查它们。", 17, MUTED)
+	var footer_row := HBoxContainer.new()
+	footer_row.add_theme_constant_override("separation", 8)
+	var plan_button := _button("开发流程", func() -> void: OS.shell_open(ProjectSettings.globalize_path("res://开发流程与任务拆解.md")))
+	plan_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	footer_row.add_child(plan_button)
+	var quit_button := _button("退出", func() -> void: get_tree().quit())
+	quit_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	footer_row.add_child(quit_button)
+	column.add_child(footer_row)
+	_feedback_label = _label("先走到附近的草地，按 2 锄地，再按 3 播种、按 4 浇水。", 17, MUTED)
 	root.add_child(_feedback_label)
 	_refresh_inspector(farm_view.selected_cell)
 	_refresh_player(farm_view.player.cell())
@@ -189,6 +211,18 @@ func _refresh_inspector(cell: Vector2i) -> void:
 	_selected_title.text = info.name
 	_terrain_properties.text = "%s · %s" % ["可通行" if info.walkable else "不可通行", "可耕地" if info.arable else "不可耕作"]
 	_tile_description.text = info.description
+	if info.arable:
+		var plot := farm_view.farm.plot_at(cell)
+		var crop_name: String = "空地" if plot.crop.is_empty() else FarmView.FarmState.SEED_NAMES[plot.crop.id] + "（已播种）"
+		_plot_details.text = "耕作：%s\n体积含水量：%.0f%%\n作物：%s" % ["已翻土" if plot.tilled else "未翻土", float(plot.moisture), crop_name]
+		if not plot.crop.is_empty():
+			_selected_title.text = FarmView.FarmState.SEED_NAMES[plot.crop.id] + "种植地"
+			_tile_description.text = "已播种，可以用水壶浇水。当前种植原型暂不推进生长。"
+		elif plot.tilled:
+			_selected_title.text = "已翻土"
+			_tile_description.text = "翻土完成，可以选择种子播种，也可以先浇水。"
+	else:
+		_plot_details.text = "该地块不能耕作。"
 
 
 func _refresh_player(cell: Vector2i) -> void:
@@ -204,7 +238,7 @@ func _refresh_hover(cell: Vector2i) -> void:
 
 func _show_feedback(message: String) -> void:
 	_feedback_label.text = message
-	_grid_button.text = "%s地块网格  [G]" % ("隐藏" if farm_view.show_grid else "显示")
+	_grid_button.text = "%s网格 [G]" % ("隐藏" if farm_view.show_grid else "显示")
 
 
 func _process(_delta: float) -> void:

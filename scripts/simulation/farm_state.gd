@@ -1,18 +1,25 @@
 extends RefCounted
 ## Terrain is simulation data. The renderer and collision code read this same grid.
 
+signal plot_changed(cell: Vector2i)
+signal supplies_changed
+
 const WIDTH: int = 24
 const HEIGHT: int = 24
 const INVALID_CELL := Vector2i(-1, -1)
 const SPAWN := Vector2(6.5, 13.5)
+const MAX_MOISTURE: float = 60.0
+const CAN_CAPACITY: int = 8
+const SEED_ORDER := ["lettuce", "carrot", "tomato"]
+const SEED_NAMES := {"lettuce": "生菜", "carrot": "胡萝卜", "tomato": "番茄"}
 
 enum Terrain { GRASS, PATH, SOIL, WATER, BUILDING, TREE, ROCK, FENCE, OUTSIDE }
 
 const NAMES := ["草地", "道路", "裸土", "水域", "农舍", "树木", "岩石", "围栏", "地图外"]
 const DESCRIPTIONS := [
-	"平整的草地，后续可以开垦。",
+	"平整的草地，可以用锄头开垦。",
 	"连接农舍、试验田和水源的通道。",
-	"预留的种植区域，等待下一步加入耕作工具。",
+	"预留的种植区域，翻土后可以播种或浇水。",
 	"农场的池塘。角色不能进入水中。",
 	"农舍占地，当前不能进入建筑。",
 	"树木形成的自然障碍，当前不能砍伐。",
@@ -22,11 +29,17 @@ const DESCRIPTIONS := [
 ]
 
 var tiles := PackedInt32Array()
+var plots: Array[Dictionary] = []
+var seed_stock: Dictionary = {"lettuce": 12, "carrot": 8, "tomato": 6}
+var produce_stock: Dictionary = {"lettuce": 0, "carrot": 0, "tomato": 0}
+var watering_charges: int = CAN_CAPACITY
 
 
 func _init() -> void:
 	tiles.resize(WIDTH * HEIGHT)
 	tiles.fill(Terrain.GRASS)
+	for _index in range(WIDTH * HEIGHT):
+		plots.append({"tilled": false, "moisture": 18.0, "crop": {}})
 	for y in range(HEIGHT):
 		for x in range(WIDTH):
 			var cell := Vector2i(x, y)
@@ -88,6 +101,12 @@ func describe(cell: Vector2i) -> Dictionary:
 		"arable": is_arable(cell),
 		"terrain": terrain,
 	}
+
+
+func plot_at(cell: Vector2i) -> Dictionary:
+	if not contains(cell):
+		return {}
+	return plots[cell.y * WIDTH + cell.x]
 
 
 func _set_tile(cell: Vector2i, terrain: int) -> void:

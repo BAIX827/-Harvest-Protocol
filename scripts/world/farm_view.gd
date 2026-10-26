@@ -8,15 +8,20 @@ signal feedback(message: String)
 
 const FarmState = preload("res://scripts/simulation/farm_state.gd")
 const Player = preload("res://scripts/world/player.gd")
+const ToolController = preload("res://scripts/world/tool_controller.gd")
 const TILE: float = 32.0
 
 var farm := FarmState.new()
 var player := Player.new(FarmState.SPAWN)
+var tools := ToolController.new(farm)
 var selected_cell := Vector2i(8, 8)
 var hovered_cell := FarmState.INVALID_CELL
 var show_grid: bool = false
 var _last_player_cell := FarmState.INVALID_CELL
 var _blocked_cooldown: float = 0.0
+var _action_flash_remaining: float = 0.0
+var _action_cell := FarmState.INVALID_CELL
+var _action_ok: bool = false
 
 
 func _ready() -> void:
@@ -25,6 +30,9 @@ func _ready() -> void:
 	resized.connect(_on_resized)
 	mouse_exited.connect(_clear_hover)
 	_register_input()
+	farm.plot_changed.connect(_on_plot_changed)
+	tools.action_completed.connect(_on_action_completed)
+	tools.selection_changed.connect(_on_tool_changed)
 	queue_redraw()
 
 
@@ -66,19 +74,27 @@ func cell_center(cell: Vector2i) -> Vector2:
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		_update_hover(event.position)
-	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+	elif event is InputEventMouseButton and event.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT] and event.pressed:
 		var cell := local_to_cell(event.position)
 		if farm.contains(cell):
 			selected_cell = cell
 			grab_focus()
 			tile_selected.emit(cell)
+			if event.button_index == MOUSE_BUTTON_LEFT:
+				tools.use(cell, player.position)
 			queue_redraw()
 		accept_event()
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
-		if event.physical_keycode == KEY_G:
+		if event.physical_keycode >= KEY_1 and event.physical_keycode <= KEY_5:
+			tools.select_tool(event.physical_keycode - KEY_1)
+			get_viewport().set_input_as_handled()
+		elif event.physical_keycode == KEY_Q:
+			tools.cycle_seed()
+			get_viewport().set_input_as_handled()
+		elif event.physical_keycode == KEY_G:
 			toggle_grid()
 			get_viewport().set_input_as_handled()
 		elif event.physical_keycode == KEY_R:
@@ -102,6 +118,9 @@ func reset_player() -> void:
 
 
 func _process(delta: float) -> void:
+	if _action_flash_remaining > 0.0:
+		_action_flash_remaining = maxf(0.0, _action_flash_remaining - delta)
+		queue_redraw()
 	_blocked_cooldown = maxf(0.0, _blocked_cooldown - delta)
 	var direction := Vector2.ZERO
 	if get_window().has_focus():
@@ -115,6 +134,26 @@ func _process(delta: float) -> void:
 	if player.cell() != _last_player_cell:
 		_last_player_cell = player.cell()
 		player_moved.emit(_last_player_cell)
+
+
+func _on_plot_changed(cell: Vector2i) -> void:
+	if cell == selected_cell:
+		tile_selected.emit(cell)
+	queue_redraw()
+
+
+func _on_action_completed(result: Dictionary) -> void:
+	feedback.emit(result.message)
+	if result.changed or not result.ok:
+		_action_flash_remaining = 0.35
+		_action_cell = result.cell
+		_action_ok = result.ok
+	queue_redraw()
+
+
+func _on_tool_changed() -> void:
+	feedback.emit("当前工具：%s。%s" % [ToolController.TOOL_NAMES[tools.active_tool], ToolController.HINTS[tools.active_tool]])
+	queue_redraw()
 
 
 func _on_resized() -> void:
@@ -144,6 +183,7 @@ func _draw() -> void:
 	for y in range(FarmState.HEIGHT):
 		for x in range(FarmState.WIDTH):
 			_draw_ground(Vector2i(x, y))
+			_draw_sown_marker(Vector2i(x, y))
 	# Sort upright objects by their footprint, so the character can pass behind them.
 	for y in range(FarmState.HEIGHT):
 		for x in range(FarmState.WIDTH):
@@ -160,6 +200,10 @@ func _draw() -> void:
 		_draw_marker(hovered_cell, Color("cccfac"), 1.0)
 	if farm.contains(selected_cell):
 		_draw_marker(selected_cell, Color("f3dfaa"), 2.0)
+	if _action_flash_remaining > 0.0 and farm.contains(_action_cell):
+		var color := Color("b7d598") if _action_ok else Color("d49579")
+		color.a = minf(1.0, _action_flash_remaining / 0.2)
+		draw_rect(Rect2(Vector2(_action_cell) * TILE + Vector2.ONE * 2, Vector2.ONE * (TILE - 4)), color, false, 2.0)
 	draw_rect(Rect2(Vector2.ZERO, Vector2.ONE * 24.0 * TILE), Color("566854"), false, 2.0)
 	draw_set_transform(Vector2.ZERO)
 
@@ -174,15 +218,24 @@ func _draw_ground(cell: Vector2i) -> void:
 	var noise_value := absi(cell.x * 73856093 ^ cell.y * 19349663)
 	var colors := ["6a8051", "708755", "667d50", "748956"]
 	_pixel(p.x, p.y, TILE, TILE, colors[noise_value % colors.size()])
-	if terrain == FarmState.Terrain.PATH:
+	var plot := farm.plot_at(cell)
+	if farm.is_arable(cell) and plot.tilled:
+		var wet: bool = float(plot.moisture) >= 30.0
+		_pixel(p.x, p.y, TILE, TILE, "664a39" if wet else "876348")
+		for i in range(4):
+			_pixel(p.x + 2, p.y + 4 + i * 7, 28, 3, "513e32" if wet else "705038")
+			_pixel(p.x + 2, p.y + 3 + i * 7, 28, 1, "846047" if wet else "a07853")
+		if wet:
+			_pixel(p.x + 25, p.y + 23, 3, 4, "7c9aa0")
+			_pixel(p.x + 26, p.y + 21, 1, 2, "7c9aa0")
+	elif terrain == FarmState.Terrain.PATH:
 		_pixel(p.x, p.y, TILE, TILE, "aa9872")
 		for i in range(4):
 			var offset := Vector2((noise_value + i * 7) % 27 + 2, (noise_value / 7 + i * 11) % 27 + 2)
 			_pixel(p.x + offset.x, p.y + offset.y, 3, 2, "b8a581")
 	elif terrain == FarmState.Terrain.SOIL:
 		_pixel(p.x, p.y, TILE, TILE, "876348" if noise_value % 2 == 0 else "8d684c")
-		for i in range(4):
-			_pixel(p.x + 3, p.y + 4 + i * 7, 26, 1, "78583f")
+		_pixel(p.x + 5, p.y + 12, 9, 1, "78583f")
 		_pixel(p.x + noise_value % 22 + 3, p.y + noise_value % 19 + 5, 2, 2, "a57b57")
 	elif terrain == FarmState.Terrain.WATER:
 		_pixel(p.x, p.y, TILE, TILE, "527c89")
@@ -205,6 +258,19 @@ func _draw_ground(cell: Vector2i) -> void:
 			_pixel(p.x + 18, p.y + 10, 5, 3, "d6c58a")
 	if show_grid:
 		draw_rect(Rect2(p, Vector2.ONE * TILE), Color(0.1, 0.15, 0.12, 0.25), false, 1.0)
+
+
+func _draw_sown_marker(cell: Vector2i) -> void:
+	var crop: Dictionary = farm.plot_at(cell).crop
+	if crop.is_empty():
+		return
+	var p := Vector2(cell) * TILE
+	var tag_colors := {"lettuce": "a9c18b", "carrot": "d4a36b", "tomato": "ba8172"}
+	# Kernels and a crop label denote a sown plot; no grown crop is fabricated.
+	for offset in [Vector2(8, 10), Vector2(20, 17), Vector2(9, 25)]:
+		_pixel(p.x + offset.x, p.y + offset.y, 3, 2, "c5b18a")
+	_pixel(p.x + 25, p.y + 3, 1, 9, "b1a27d")
+	_pixel(p.x + 23, p.y + 2, 6, 4, tag_colors.get(crop.id, "c5b18a"))
 
 
 func _draw_tree(cell: Vector2i) -> void:

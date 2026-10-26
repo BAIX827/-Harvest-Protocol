@@ -28,4 +28,5 @@ function Invoke-GodotCheck {
 Invoke-GodotCheck -CheckName 'import' -EngineArguments @('--headless', '--path', $projectRoot, '--editor', '--import')
 Invoke-GodotCheck -CheckName 'boot' -EngineArguments @('--headless', '--path', $projectRoot, '--', '--smoke-test') -SuccessMarker 'FIELDWORKS_BOOT_OK'
 Invoke-GodotCheck -CheckName 'world' -EngineArguments @('--headless', '--path', $projectRoot, '--script', 'res://tests/test_world.gd') -SuccessMarker 'FIELDWORKS_WORLD_TESTS_OK'
-Write-Host 'PASS: project import, headless startup and world behaviour checks.'
+Invoke-GodotCheck -CheckName 'tools' -EngineArguments @('--headless', '--path', $projectRoot, '--script', 'res://tests/test_tools.gd') -SuccessMarker 'FIELDWORKS_TOOLS_TESTS_OK'
+Write-Host 'PASS: project import, startup, world and cultivation tool checks.'
