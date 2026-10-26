@@ -1,8 +1,9 @@
 extends Control
-## Step 3: tools and supply counts act on the same state as the map and inspector.
+## Step 4: one fixed clock drives weather, moisture and the time controls.
 
 const FarmView = preload("res://scripts/world/farm_view.gd")
 const ToolBar = preload("res://scripts/ui/tool_bar.gd")
+const TimeBar = preload("res://scripts/ui/time_bar.gd")
 
 const BACKGROUND := Color("101b22")
 const PANEL := Color("1a2a33")
@@ -16,6 +17,7 @@ var _smoke_test: bool = false
 var _capture_path: String = ""
 var farm_view: FarmView
 var tool_bar: ToolBar
+var time_bar: TimeBar
 var _selected_title: Label
 var _selected_coords: Label
 var _tile_description: Label
@@ -125,7 +127,11 @@ func _build_interface() -> void:
 	var title := _label("田野工程师  Fieldworks", 26)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(title)
-	header.add_child(_label("第 3 步 · 地块与工具", 18, ACCENT))
+	# Create state before the time bar so every panel uses the farm view's simulation.
+	farm_view = FarmView.new()
+	time_bar = TimeBar.new()
+	time_bar.setup(farm_view.simulation)
+	header.add_child(time_bar)
 	var body := HBoxContainer.new()
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	body.add_theme_constant_override("separation", 24)
@@ -138,7 +144,6 @@ func _build_interface() -> void:
 	preview_panel.add_child(preview_column)
 	preview_column.add_child(_label("农场试验区", 22))
 	preview_column.add_child(_label("24 × 24 地块 · 走近目标，选择工具后左键操作", 16, MUTED))
-	farm_view = FarmView.new()
 	farm_view.name = "FarmView"
 	farm_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	farm_view.custom_minimum_size = Vector2(480, 440)
@@ -185,8 +190,8 @@ func _build_interface() -> void:
 	utility_row.add_child(reset_button)
 	column.add_child(utility_row)
 	column.add_child(HSeparator.new())
-	column.add_child(_label("当前进度", 18))
-	column.add_child(_paragraph("已开放锄地、播种与浇水。\n当前作物暂不生长；时间与天气将在下一阶段加入。", 17))
+	column.add_child(_label("第 4 步 · 时间与天气", 18))
+	column.add_child(_paragraph("时间、天气和土壤水分已联动。暂停后仍可耕作。\n作物生长将在下一阶段加入。", 17))
 	var filler := Control.new()
 	filler.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	column.add_child(filler)
@@ -214,7 +219,9 @@ func _refresh_inspector(cell: Vector2i) -> void:
 	if info.arable:
 		var plot := farm_view.farm.plot_at(cell)
 		var crop_name: String = "空地" if plot.crop.is_empty() else FarmView.FarmState.SEED_NAMES[plot.crop.id] + "（已播种）"
-		_plot_details.text = "耕作：%s\n体积含水量：%.0f%%\n作物：%s" % ["已翻土" if plot.tilled else "未翻土", float(plot.moisture), crop_name]
+		var rates := farm_view.simulation.water_rates_at(cell)
+		_plot_details.text = "耕作：%s\n体积含水量：%.1f%%\n水分趋势：%+.1f 百分点/时\n作物：%s" % ["已翻土" if plot.tilled else "未翻土", float(plot.moisture), float(rates.net), crop_name]
+		_plot_details.tooltip_text = "当前每游戏小时：雨水 +%.2f、蒸发 -%.2f、排水 -%.2f 个百分点。趋势按当前状态估算。" % [rates.rain, rates.evaporation, rates.drainage]
 		if not plot.crop.is_empty():
 			_selected_title.text = FarmView.FarmState.SEED_NAMES[plot.crop.id] + "种植地"
 			_tile_description.text = "已播种，可以用水壶浇水。当前种植原型暂不推进生长。"
@@ -239,6 +246,12 @@ func _refresh_hover(cell: Vector2i) -> void:
 func _show_feedback(message: String) -> void:
 	_feedback_label.text = message
 	_grid_button.text = "%s网格 [G]" % ("隐藏" if farm_view.show_grid else "显示")
+
+
+func _unhandled_key_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_SPACE:
+		farm_view.simulation.clock.toggle_paused()
+		get_viewport().set_input_as_handled()
 
 
 func _process(_delta: float) -> void:

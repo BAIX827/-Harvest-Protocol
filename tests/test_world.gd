@@ -74,6 +74,7 @@ func _test_viewport_picking() -> void:
 	var scene: PackedScene = load("res://scenes/main.tscn")
 	var app := scene.instantiate()
 	root.add_child(app)
+	app.farm_view.simulation.clock.set_paused(true)
 	await process_frame
 	await process_frame
 	var view: Control = app.farm_view

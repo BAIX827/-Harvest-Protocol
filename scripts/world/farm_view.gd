@@ -9,11 +9,13 @@ signal feedback(message: String)
 const FarmState = preload("res://scripts/simulation/farm_state.gd")
 const Player = preload("res://scripts/world/player.gd")
 const ToolController = preload("res://scripts/world/tool_controller.gd")
+const FarmSimulation = preload("res://scripts/simulation/farm_simulation.gd")
 const TILE: float = 32.0
 
 var farm := FarmState.new()
 var player := Player.new(FarmState.SPAWN)
 var tools := ToolController.new(farm)
+var simulation := FarmSimulation.new(farm)
 var selected_cell := Vector2i(8, 8)
 var hovered_cell := FarmState.INVALID_CELL
 var show_grid: bool = false
@@ -22,6 +24,7 @@ var _blocked_cooldown: float = 0.0
 var _action_flash_remaining: float = 0.0
 var _action_cell := FarmState.INVALID_CELL
 var _action_ok: bool = false
+var _rain_animation: float = 0.0
 
 
 func _ready() -> void:
@@ -33,6 +36,7 @@ func _ready() -> void:
 	farm.plot_changed.connect(_on_plot_changed)
 	tools.action_completed.connect(_on_action_completed)
 	tools.selection_changed.connect(_on_tool_changed)
+	simulation.updated.connect(_on_environment_changed)
 	queue_redraw()
 
 
@@ -118,6 +122,10 @@ func reset_player() -> void:
 
 
 func _process(delta: float) -> void:
+	simulation.advance(delta)
+	if simulation.weather.is_raining() and not simulation.clock.paused:
+		_rain_animation += delta
+		queue_redraw()
 	if _action_flash_remaining > 0.0:
 		_action_flash_remaining = maxf(0.0, _action_flash_remaining - delta)
 		queue_redraw()
@@ -139,6 +147,11 @@ func _process(delta: float) -> void:
 func _on_plot_changed(cell: Vector2i) -> void:
 	if cell == selected_cell:
 		tile_selected.emit(cell)
+	queue_redraw()
+
+
+func _on_environment_changed() -> void:
+	tile_selected.emit(selected_cell)
 	queue_redraw()
 
 
@@ -196,6 +209,15 @@ func _draw() -> void:
 			_draw_house()
 		if player.cell().y == y:
 			_draw_player()
+	var map_extent := Rect2(Vector2.ZERO, Vector2.ONE * 24.0 * TILE)
+	var night := simulation.night_opacity()
+	if night > 0.0:
+		draw_rect(map_extent, Color(0.04, 0.09, 0.18, night))
+	if simulation.weather.is_raining():
+		for index in range(70):
+			var rx: float = fposmod(float(index * 97) + _rain_animation * 32.0, 760.0) + 4.0
+			var ry: float = fposmod(float(index * 61) + _rain_animation * 180.0, 758.0) + 4.0
+			draw_line(Vector2(rx, ry), Vector2(rx - 2, ry + 6), Color(0.75, 0.85, 0.86, 0.34), 1.0)
 	if farm.contains(hovered_cell) and hovered_cell != selected_cell:
 		_draw_marker(hovered_cell, Color("cccfac"), 1.0)
 	if farm.contains(selected_cell):
