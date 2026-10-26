@@ -5,6 +5,8 @@ signal tile_selected(cell: Vector2i)
 signal hovered_cell_changed(cell: Vector2i)
 signal player_moved(cell: Vector2i)
 signal feedback(message: String)
+signal presentation_changed
+signal player_position_changed
 
 const FarmState = preload("res://scripts/simulation/farm_state.gd")
 const Player = preload("res://scripts/world/player.gd")
@@ -89,6 +91,7 @@ func _gui_input(event: InputEvent) -> void:
 		var cell := local_to_cell(event.position)
 		if farm.contains(cell):
 			selected_cell = cell
+			presentation_changed.emit()
 			grab_focus()
 			tile_selected.emit(cell)
 			if event.button_index == MOUSE_BUTTON_LEFT:
@@ -117,6 +120,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 func toggle_grid() -> void:
 	show_grid = not show_grid
+	presentation_changed.emit()
 	feedback.emit("地块网格已%s。" % ("显示" if show_grid else "隐藏"))
 	queue_redraw()
 
@@ -125,9 +129,21 @@ func reset_player() -> void:
 	player.position = FarmState.SPAWN
 	player.moving = false
 	player.facing = Vector2.DOWN
+	player_position_changed.emit()
 	player_moved.emit(player.cell())
 	feedback.emit("已回到农场入口。")
 	queue_redraw()
+
+
+func reset_transient_state() -> void:
+	hovered_cell = FarmState.INVALID_CELL
+	_last_player_cell = player.cell()
+	_blocked_cooldown = 0.0
+	_action_flash_remaining = 0.0
+	_action_cell = FarmState.INVALID_CELL
+	_rain_animation = 0.0
+	simulation._matured_this_batch.clear()
+	hovered_cell_changed.emit(hovered_cell)
 
 
 func _process(delta: float) -> void:
@@ -143,7 +159,10 @@ func _process(delta: float) -> void:
 	if interaction_enabled and get_window().has_focus():
 		direction = Input.get_vector("farm_left", "farm_right", "farm_up", "farm_down")
 	var was_moving := player.moving
-	if player.advance(direction, delta, farm) or was_moving:
+	var moved := player.advance(direction, delta, farm)
+	if moved:
+		player_position_changed.emit()
+	if moved or was_moving:
 		queue_redraw()
 	if player.blocked and not player.moving and _blocked_cooldown <= 0.0:
 		feedback.emit("前方有障碍，请沿道路绕行。")

@@ -1,10 +1,11 @@
 extends Control
-## Step 6: farm inventory, market and ledger share the authoritative cash model.
+## Step 7: explicit versioned saves, validated loads and unsaved-progress handling.
 
 const FarmView = preload("res://scripts/world/farm_view.gd")
 const ToolBar = preload("res://scripts/ui/tool_bar.gd")
 const TimeBar = preload("res://scripts/ui/time_bar.gd")
 const MarketPanel = preload("res://scripts/ui/market_panel.gd")
+const SaveService = preload("res://scripts/persistence/save_service.gd")
 
 const BACKGROUND := Color("101b22")
 const PANEL := Color("1a2a33")
@@ -33,9 +34,28 @@ var _growth_bar: ProgressBar
 var _produce_label: Label
 var _cash_label: Label
 var _market_button: Button
+var save_service: SaveService
+var save_button: Button
+var load_button: Button
+var save_status: Label
+var load_dialog: ConfirmationDialog
+var quit_dialog: ConfirmationDialog
+var _dirty: bool = true
+var _has_progress: bool = false
+var _restoring: bool = false
+var _saved_minute: int = -1
+var _saved_controls: Dictionary = {"speed": 1, "paused": false}
+var _previous_actor_cell := Vector2i(6, 13)
+var _loaded_backup: bool = false
+var _pending_backup: bool = false
+var _dialog_active: bool = false
+var _dialog_was_paused: bool = false
+var _dialog_effective_pause: bool = false
+var _dialog_interaction: bool = true
 
 
 func _ready() -> void:
+	save_service = SaveService.new(str(get_meta("save_path", SaveService.DEFAULT_PATH)))
 	for argument in OS.get_cmdline_user_args():
 		if argument == "--smoke-test":
 			_smoke_test = true
@@ -43,6 +63,8 @@ func _ready() -> void:
 			_capture_path = argument.trim_prefix("--capture=")
 	_setup_theme()
 	_build_interface()
+	_setup_save_ui()
+	get_tree().set_auto_accept_quit(false)
 
 
 func _setup_theme() -> void:
@@ -227,13 +249,19 @@ func _build_interface() -> void:
 	column.add_child(filler)
 	var footer_row := HBoxContainer.new()
 	footer_row.add_theme_constant_override("separation", 8)
-	var plan_button := _button("开发流程", func() -> void: OS.shell_open(ProjectSettings.globalize_path("res://开发流程与任务拆解.md")))
-	plan_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	footer_row.add_child(plan_button)
-	var quit_button := _button("退出", func() -> void: get_tree().quit())
+	save_button = _button("保存 F5", _save_from_button)
+	save_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	footer_row.add_child(save_button)
+	load_button = _button("读取 F9", _request_load)
+	load_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	footer_row.add_child(load_button)
+	var quit_button := _button("退出", _request_quit)
 	quit_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	footer_row.add_child(quit_button)
 	column.add_child(footer_row)
+	save_status = _label("尚未存档", 14, MUTED)
+	save_status.tooltip_text = save_service.path
+	column.add_child(save_status)
 	_feedback_label = _label("先走到附近的草地，按 2 锄地，再按 3 播种、按 4 浇水。", 17, MUTED)
 	root.add_child(_feedback_label)
 	_refresh_inspector(farm_view.selected_cell)
@@ -248,6 +276,192 @@ func _build_interface() -> void:
 	market_panel.opened.connect(func() -> void: farm_view.interaction_enabled = false)
 	market_panel.closed.connect(_market_closed)
 	add_child(market_panel)
+
+
+func _setup_save_ui() -> void:
+	load_dialog = ConfirmationDialog.new()
+	load_dialog.title = "读取农场"
+	load_dialog.ok_button_text = "读取"
+	load_dialog.cancel_button_text = "取消"
+	load_dialog.confirmed.connect(_confirm_load)
+	load_dialog.canceled.connect(_cancel_dialog)
+	add_child(load_dialog)
+	quit_dialog = ConfirmationDialog.new()
+	quit_dialog.title = "离开农场"
+	quit_dialog.ok_button_text = "保存并退出"
+	quit_dialog.cancel_button_text = "取消"
+	quit_dialog.add_button("不保存退出", true, "discard")
+	quit_dialog.confirmed.connect(_save_and_quit)
+	quit_dialog.canceled.connect(_cancel_dialog)
+	quit_dialog.custom_action.connect(func(action: StringName) -> void:
+		if action == &"discard": get_tree().quit())
+	add_child(quit_dialog)
+	farm_view.simulation.updated.connect(_mark_dirty)
+	farm_view.tools.action_completed.connect(func(result: Dictionary) -> void:
+		if result.changed: _manual_progress())
+	farm_view.farm.economy_changed.connect(_manual_progress)
+	farm_view.tools.selection_changed.connect(_mark_dirty)
+	farm_view.presentation_changed.connect(_mark_dirty)
+	farm_view.player_position_changed.connect(_manual_progress)
+	farm_view.simulation.clock.controls_changed.connect(func() -> void: _check_controls_dirty.call_deferred())
+	if save_service.exists() and not _smoke_test and _capture_path.is_empty():
+		farm_view.simulation.clock.set_paused(true)
+		_show_feedback("发现已有存档，按 F9 继续上次农场；当前未自动读取或覆盖。")
+	_refresh_save_status()
+
+
+func _manual_progress() -> void:
+	if _restoring: return
+	_has_progress = true
+	_mark_dirty()
+
+
+func _mark_dirty() -> void:
+	if _restoring or save_status == null: return
+	_dirty = true
+	_refresh_save_status()
+
+
+func _effective_pause() -> bool:
+	if _dialog_active: return _dialog_effective_pause
+	return market_panel._previous_pause if market_panel != null and market_panel.visible else farm_view.simulation.clock.paused
+
+
+func _check_controls_dirty() -> void:
+	if not is_inside_tree() or _restoring: return
+	if farm_view.simulation.clock.speed != int(_saved_controls.speed) or _effective_pause() != bool(_saved_controls.paused):
+		_mark_dirty()
+
+
+func _refresh_save_status() -> void:
+	if save_status == null: return
+	load_button.disabled = not save_service.exists()
+	if _loaded_backup:
+		save_status.text = "备份已恢复 · 请按 F5 保存"
+	elif _saved_minute >= 0:
+		save_status.text = "%s · 上次 %s" % ["未保存进度" if _dirty else "已保存", _stamp(_saved_minute)]
+	elif save_service.exists() and not _has_progress:
+		save_status.text = "已有存档 · 按 F9 继续"
+	else:
+		save_status.text = "当前进度尚未保存"
+
+
+func _stamp(minute: int) -> String:
+	return "第%d天 %02d:%02d" % [minute / 1440 + 1, minute % 1440 / 60, minute % 60]
+
+
+func _save_from_button() -> void:
+	_save_game()
+
+
+func _save_game() -> Dictionary:
+	var result := save_service.save(farm_view, _effective_pause())
+	if result.ok:
+		_dirty = false
+		_has_progress = true
+		_loaded_backup = false
+		_saved_minute = farm_view.simulation.clock.total_minutes
+		_saved_controls = {"speed": farm_view.simulation.clock.speed, "paused": _effective_pause()}
+		_refresh_save_status()
+		_post_save_message("已保存农场：%s。" % _stamp(_saved_minute))
+	else:
+		_post_save_message("保存失败：" + result.message)
+	return result
+
+
+func _post_save_message(message: String) -> void:
+	_show_feedback(message)
+	if market_panel.visible:
+		market_panel.receipt_label.text = message
+
+
+func _request_load() -> void:
+	if _dialog_active: return
+	_pending_backup = false
+	var primary := save_service.read()
+	if not primary.ok:
+		var backup := save_service.read(true)
+		if not backup.ok:
+			_post_save_message("读取失败：" + primary.message + " 当前农场保持不变。")
+			return
+		_pending_backup = true
+		_begin_dialog(load_dialog, "主存档无法读取：%s\n发现上一次有效备份（%s）。\n是否读取备份？当前未保存进度将被替换。" % [primary.message, _stamp(backup.game_minutes)])
+	elif _has_progress and _dirty:
+		_begin_dialog(load_dialog, "将读取 %s 的存档。\n当前未保存进度将被替换，是否继续？" % _stamp(primary.game_minutes))
+	else:
+		_perform_load(false)
+
+
+func _begin_dialog(dialog: ConfirmationDialog, message: String) -> void:
+	_dialog_was_paused = farm_view.simulation.clock.paused
+	_dialog_effective_pause = _effective_pause()
+	_dialog_interaction = farm_view.interaction_enabled
+	_dialog_active = true
+	farm_view.interaction_enabled = false
+	farm_view.simulation.clock.set_paused(true)
+	dialog.dialog_text = message
+	dialog.popup_centered(Vector2i(660, 220))
+
+
+func _cancel_dialog() -> void:
+	load_dialog.hide()
+	quit_dialog.hide()
+	farm_view.simulation.clock.set_paused(_dialog_was_paused)
+	farm_view.interaction_enabled = _dialog_interaction
+	_dialog_active = false
+	if farm_view.interaction_enabled: farm_view.grab_focus()
+
+
+func _confirm_load() -> void:
+	_perform_load(_pending_backup)
+
+
+func _perform_load(use_backup: bool) -> void:
+	var result := save_service.read(use_backup)
+	if not result.ok:
+		if _dialog_active: _cancel_dialog()
+		_post_save_message("读取失败：" + result.message + " 当前农场保持不变。")
+		return
+	_restoring = true
+	load_dialog.hide()
+	quit_dialog.hide()
+	_dialog_active = false
+	if market_panel.visible: market_panel.close_market()
+	var applied := save_service.apply_read(farm_view, result)
+	_restoring = false
+	if not applied.ok:
+		_post_save_message("读取失败：" + applied.message)
+		return
+	farm_view.interaction_enabled = true
+	_has_progress = true
+	_dirty = use_backup
+	_loaded_backup = use_backup
+	_saved_minute = int(result.game_minutes)
+	_saved_controls = {"speed": farm_view.simulation.clock.speed, "paused": farm_view.simulation.clock.paused}
+	_previous_actor_cell = farm_view.player.cell()
+	_refresh_save_status()
+	_post_save_message("%s：%s。" % ["已恢复备份，请按 F5 保存" if use_backup else "已读取农场", _stamp(_saved_minute)])
+	farm_view.grab_focus()
+
+
+func _request_quit() -> void:
+	if _dialog_active: return
+	if _has_progress and _dirty:
+		_begin_dialog(quit_dialog, "当前农场有未保存进度。\n保存后退出，或选择不保存退出。")
+	else:
+		get_tree().quit()
+
+
+func _save_and_quit() -> void:
+	if _save_game().ok:
+		get_tree().quit()
+	else:
+		_cancel_dialog()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST and is_node_ready():
+		_request_quit()
 
 
 func _refresh_inspector(cell: Vector2i) -> void:
@@ -301,16 +515,26 @@ func _market_closed() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if _dialog_active: return
 	if market_panel != null and market_panel.visible and event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode in [KEY_B, KEY_ESCAPE]:
 			market_panel.close_market()
 			get_viewport().set_input_as_handled()
 		elif event.physical_keycode == KEY_SPACE:
 			get_viewport().set_input_as_handled()
+		elif event.physical_keycode == KEY_F5:
+			_save_game()
+			get_viewport().set_input_as_handled()
+		elif event.physical_keycode == KEY_F9:
+			_request_load()
+			get_viewport().set_input_as_handled()
 
 
 func _refresh_player(cell: Vector2i) -> void:
 	_player_label.text = "角色位置  (%02d, %02d)" % [cell.x + 1, cell.y + 1]
+	if cell != _previous_actor_cell:
+		_previous_actor_cell = cell
+		_manual_progress()
 
 
 func _refresh_hover(cell: Vector2i) -> void:
@@ -326,12 +550,19 @@ func _show_feedback(message: String) -> void:
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
+	if _dialog_active: return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode == KEY_B:
 			_open_market()
 			get_viewport().set_input_as_handled()
 		elif event.physical_keycode == KEY_SPACE:
 			farm_view.simulation.clock.toggle_paused()
+			get_viewport().set_input_as_handled()
+		elif event.physical_keycode == KEY_F5:
+			_save_game()
+			get_viewport().set_input_as_handled()
+		elif event.physical_keycode == KEY_F9:
+			_request_load()
 			get_viewport().set_input_as_handled()
 
 
