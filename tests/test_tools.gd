@@ -67,7 +67,7 @@ func _test_cultivation_contract() -> void:
 	_reject(tools, cell, actor, "wet_enough")
 	tools.select_tool(ToolController.Tool.HARVEST)
 	_reject(tools, cell, actor, "not_mature")
-	# A future growth-system fixture verifies the harvest interface, not a playable growth feature.
+	# A mature-state fixture isolates harvest validation from natural crop growth.
 	farm.plot_at(cell).crop.growth = 1.0
 	_expect(tools.use(cell, actor).ok and farm.produce_stock.lettuce == 1, "A mature-state fixture is collected into authoritative produce storage.")
 	_expect(farm.plot_at(cell).crop.is_empty() and farm.plot_at(cell).tilled and farm.plot_at(cell).moisture == 60.0, "Harvest clears only the crop and preserves prepared soil and water.")

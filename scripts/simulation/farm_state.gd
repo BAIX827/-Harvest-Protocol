@@ -10,8 +10,9 @@ const INVALID_CELL := Vector2i(-1, -1)
 const SPAWN := Vector2(6.5, 13.5)
 const MAX_MOISTURE: float = 60.0
 const CAN_CAPACITY: int = 8
-const SEED_ORDER := ["lettuce", "carrot", "tomato"]
-const SEED_NAMES := {"lettuce": "生菜", "carrot": "胡萝卜", "tomato": "番茄"}
+const CropCatalog = preload("res://scripts/simulation/crop_catalog.gd")
+static var SEED_ORDER: Array[String] = CropCatalog.ids()
+static var SEED_NAMES: Dictionary = CropCatalog.names()
 
 enum Terrain { GRASS, PATH, SOIL, WATER, BUILDING, TREE, ROCK, FENCE, OUTSIDE }
 

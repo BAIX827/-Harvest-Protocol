@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "order": ["lettuce", "carrot", "tomato"],
+  "crops": {
+    "lettuce": {
+      "name": "生菜",
+      "growth_minutes": 360,
+      "dry_stop": 8.0,
+      "optimal_min": 24.0,
+      "optimal_max": 38.0,
+      "wet_stop": 55.0,
+      "night_factor": 0.35,
+      "transpiration_mm_h": 0.35,
+      "harvest_count": 1
+    },
+    "carrot": {
+      "name": "胡萝卜",
+      "growth_minutes": 540,
+      "dry_stop": 8.0,
+      "optimal_min": 20.0,
+      "optimal_max": 34.0,
+      "wet_stop": 55.0,
+      "night_factor": 0.35,
+      "transpiration_mm_h": 0.28,
+      "harvest_count": 1
+    },
+    "tomato": {
+      "name": "番茄",
+      "growth_minutes": 720,
+      "dry_stop": 8.0,
+      "optimal_min": 22.0,
+      "optimal_max": 36.0,
+      "wet_stop": 55.0,
+      "night_factor": 0.35,
+      "transpiration_mm_h": 0.4,
+      "harvest_count": 1
+    }
+  }
+}

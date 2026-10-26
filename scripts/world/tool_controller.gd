@@ -5,6 +5,7 @@ signal selection_changed
 signal action_completed(result: Dictionary)
 
 const FarmState = preload("res://scripts/simulation/farm_state.gd")
+const CropModel = preload("res://scripts/simulation/crop_model.gd")
 const REACH: float = 1.6
 const WATER_INCREMENT: float = 12.0
 
@@ -17,7 +18,7 @@ const HINTS := [
 	"锄地：靠近草地或裸土后点击，已播种地块不能再翻。",
 	"播种：选好种子后，点击附近已翻土的空地。",
 	"浇水：点击附近已翻土地块；靠近池塘点击水面可以补水。",
-	"收获：成熟后才能收取。当前种植原型暂不推进生长。",
+	"收获：成熟时靠近地块点击，收成计入库存。",
 ]
 
 var farm: FarmState
@@ -81,6 +82,7 @@ func use(cell: Vector2i, actor: Vector2) -> Dictionary:
 	if not farm.is_arable(cell):
 		return _result(false, false, cell, "not_arable", "%s不能耕作，请选择草地或裸土。" % farm.describe(cell).name)
 	var plot := farm.plot_at(cell)
+	var harvest_note: String = ""
 	match active_tool:
 		Tool.HOE:
 			if not plot.crop.is_empty():
@@ -96,7 +98,7 @@ func use(cell: Vector2i, actor: Vector2) -> Dictionary:
 			if int(farm.seed_stock.get(selected_seed, 0)) <= 0:
 				return _result(false, false, cell, "no_seed", "%s种子用完了，请换一种种子。" % FarmState.SEED_NAMES[selected_seed])
 			farm.seed_stock[selected_seed] -= 1
-			plot.crop = {"id": selected_seed, "growth": 0.0}
+			plot.crop = CropModel.new_crop(selected_seed)
 		Tool.WATER:
 			if not plot.tilled:
 				return _result(false, false, cell, "untilled", "先用锄头翻土，再浇水。")
@@ -109,10 +111,12 @@ func use(cell: Vector2i, actor: Vector2) -> Dictionary:
 		Tool.HARVEST:
 			if plot.crop.is_empty():
 				return _result(false, false, cell, "no_crop", "这里没有可收获的作物。")
-			if float(plot.crop.get("growth", 0.0)) < 1.0:
-				return _result(false, false, cell, "not_mature", "作物尚未成熟，不能收获。当前种植原型暂不推进生长。")
+			if not CropModel.is_mature(plot.crop):
+				return _result(false, false, cell, "not_mature", "作物尚未成熟，请检查水分并等待生长。")
 			var crop_id: String = plot.crop.id
-			farm.produce_stock[crop_id] = int(farm.produce_stock.get(crop_id, 0)) + 1
+			var count := int(FarmState.CropCatalog.definition(crop_id).get("harvest_count", 1))
+			farm.produce_stock[crop_id] = int(farm.produce_stock.get(crop_id, 0)) + count
+			harvest_note = "已收获%s ×%d，放入农产品库存。" % [FarmState.SEED_NAMES[crop_id], count]
 			plot.crop = {}
 	farm.plot_changed.emit(cell)
 	farm.supplies_changed.emit()
@@ -120,7 +124,7 @@ func use(cell: Vector2i, actor: Vector2) -> Dictionary:
 		Tool.HOE: "翻土完成，可以选择种子播种。",
 		Tool.SOW: "已播下%s，消耗 1 份种子。" % FarmState.SEED_NAMES[selected_seed],
 		Tool.WATER: "浇水完成，土壤水分为 %.0f%%。" % float(plot.moisture),
-		Tool.HARVEST: "收获完成，农产品已放入库存。",
+		Tool.HARVEST: harvest_note,
 	}
 	return _result(true, true, cell, TOOL_IDS[active_tool], messages[active_tool])
 

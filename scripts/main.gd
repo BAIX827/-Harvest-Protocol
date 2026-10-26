@@ -1,5 +1,5 @@
 extends Control
-## Step 4: one fixed clock drives weather, moisture and the time controls.
+## Step 5: crop state drives stage graphics, growth explanations and harvesting.
 
 const FarmView = preload("res://scripts/world/farm_view.gd")
 const ToolBar = preload("res://scripts/ui/tool_bar.gd")
@@ -27,6 +27,8 @@ var _hover_label: Label
 var _feedback_label: Label
 var _grid_button: Button
 var _plot_details: Label
+var _growth_bar: ProgressBar
+var _produce_label: Label
 
 
 func _ready() -> void:
@@ -162,7 +164,7 @@ func _build_interface() -> void:
 	progress_panel.custom_minimum_size.x = 370
 	body.add_child(progress_panel)
 	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", 10)
+	column.add_theme_constant_override("separation", 8)
 	progress_panel.add_child(column)
 	column.add_child(_label("地块检查", 22))
 	_selected_coords = _label("", 17, MUTED)
@@ -174,6 +176,21 @@ func _build_interface() -> void:
 	_plot_details = _paragraph("", 17, TEXT)
 	_plot_details.custom_minimum_size.y = 70
 	column.add_child(_plot_details)
+	_growth_bar = ProgressBar.new()
+	_growth_bar.custom_minimum_size.y = 20
+	_growth_bar.max_value = 100
+	_growth_bar.step = 0.1
+	_growth_bar.mouse_filter = Control.MOUSE_FILTER_PASS
+	var track := StyleBoxFlat.new()
+	track.bg_color = Color("2c4148")
+	track.set_corner_radius_all(3)
+	_growth_bar.add_theme_stylebox_override("background", track)
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = Color("839e6e")
+	fill.set_corner_radius_all(3)
+	_growth_bar.add_theme_stylebox_override("fill", fill)
+	_growth_bar.add_theme_font_size_override("font_size", 14)
+	column.add_child(_growth_bar)
 	_tile_description = _paragraph("", 18)
 	column.add_child(_tile_description)
 	column.add_child(HSeparator.new())
@@ -190,8 +207,10 @@ func _build_interface() -> void:
 	utility_row.add_child(reset_button)
 	column.add_child(utility_row)
 	column.add_child(HSeparator.new())
-	column.add_child(_label("第 4 步 · 时间与天气", 18))
-	column.add_child(_paragraph("时间、天气和土壤水分已联动。暂停后仍可耕作。\n作物生长将在下一阶段加入。", 17))
+	column.add_child(_label("收获库存", 18))
+	_produce_label = _paragraph("", 17, TEXT)
+	column.add_child(_produce_label)
+	column.add_child(_paragraph("作物成熟后，按 5 收获到库存。\n缺水或过湿会减慢生长。", 17))
 	var filler := Control.new()
 	filler.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	column.add_child(filler)
@@ -208,6 +227,8 @@ func _build_interface() -> void:
 	root.add_child(_feedback_label)
 	_refresh_inspector(farm_view.selected_cell)
 	_refresh_player(farm_view.player.cell())
+	farm_view.farm.supplies_changed.connect(_refresh_produce)
+	_refresh_produce()
 
 
 func _refresh_inspector(cell: Vector2i) -> void:
@@ -216,20 +237,35 @@ func _refresh_inspector(cell: Vector2i) -> void:
 	_selected_title.text = info.name
 	_terrain_properties.text = "%s · %s" % ["可通行" if info.walkable else "不可通行", "可耕地" if info.arable else "不可耕作"]
 	_tile_description.text = info.description
+	_growth_bar.visible = false
 	if info.arable:
 		var plot := farm_view.farm.plot_at(cell)
-		var crop_name: String = "空地" if plot.crop.is_empty() else FarmView.FarmState.SEED_NAMES[plot.crop.id] + "（已播种）"
+		var crop_name: String = "空地" if plot.crop.is_empty() else FarmView.FarmState.SEED_NAMES[plot.crop.id]
 		var rates := farm_view.simulation.water_rates_at(cell)
 		_plot_details.text = "耕作：%s\n体积含水量：%.1f%%\n水分趋势：%+.1f 百分点/时\n作物：%s" % ["已翻土" if plot.tilled else "未翻土", float(plot.moisture), float(rates.net), crop_name]
-		_plot_details.tooltip_text = "当前每游戏小时：雨水 +%.2f、蒸发 -%.2f、排水 -%.2f 个百分点。趋势按当前状态估算。" % [rates.rain, rates.evaporation, rates.drainage]
+		_plot_details.tooltip_text = "每游戏小时：雨水 +%.2f、蒸发 -%.2f、排水 -%.2f、作物耗水 -%.2f 个百分点。" % [rates.rain, rates.evaporation, rates.drainage, rates.transpiration]
 		if not plot.crop.is_empty():
-			_selected_title.text = FarmView.FarmState.SEED_NAMES[plot.crop.id] + "种植地"
-			_tile_description.text = "已播种，可以用水壶浇水。当前种植原型暂不推进生长。"
+			var status := farm_view.simulation.crops.describe(plot, farm_view.simulation.clock.is_daylight_at(farm_view.simulation.clock.total_minutes))
+			_selected_title.text = crop_name + " · " + status.stage
+			_growth_bar.visible = true
+			_growth_bar.value = status.progress
+			if status.ready:
+				_growth_bar.tooltip_text = "基准生长期 %.0f 小时，本次成熟用时 %.1f 小时。" % [status.base_hours, status.age_hours]
+			else:
+				_growth_bar.tooltip_text = "基准生长期 %.0f 小时，已种植 %.1f 小时。当前速度为基准的 %.0f%%。" % [status.base_hours, status.age_hours, float(status.rate) * 100.0]
+			_tile_description.text = status.reason + ("" if status.ready else "（%.0f%% 速度）" % (float(status.rate) * 100.0)) + "\n" + status.help
 		elif plot.tilled:
 			_selected_title.text = "已翻土"
 			_tile_description.text = "翻土完成，可以选择种子播种，也可以先浇水。"
 	else:
 		_plot_details.text = "该地块不能耕作。"
+
+
+func _refresh_produce() -> void:
+	var items := PackedStringArray()
+	for id in FarmView.FarmState.SEED_ORDER:
+		items.append("%s ×%d" % [FarmView.FarmState.SEED_NAMES[id], int(farm_view.farm.produce_stock[id])])
+	_produce_label.text = "　".join(items)
 
 
 func _refresh_player(cell: Vector2i) -> void:

@@ -3,10 +3,12 @@ extends RefCounted
 
 signal updated
 signal step_completed(context: Dictionary)
+signal crops_matured(cells: Array)
 
 const FarmState = preload("res://scripts/simulation/farm_state.gd")
 const SimulationClock = preload("res://scripts/simulation/simulation_clock.gd")
 const WeatherModel = preload("res://scripts/simulation/weather_model.gd")
+const CropModel = preload("res://scripts/simulation/crop_model.gd")
 
 const ROOT_ZONE_MM: float = 200.0
 const INFILTRATION: float = 0.85
@@ -16,6 +18,8 @@ const DRAINAGE_PER_HOUR: float = 0.18
 var farm: FarmState
 var clock := SimulationClock.new()
 var weather := WeatherModel.new()
+var crops := CropModel.new()
+var _matured_this_batch: Array[Dictionary] = []
 
 
 func _init(state: FarmState) -> void:
@@ -24,9 +28,12 @@ func _init(state: FarmState) -> void:
 
 
 func advance(real_seconds: float) -> int:
+	_matured_this_batch.clear()
 	var steps := clock.advance(real_seconds)
 	if steps > 0:
 		updated.emit()
+		if not _matured_this_batch.is_empty():
+			crops_matured.emit(_matured_this_batch.duplicate(true))
 	return steps
 
 
@@ -44,6 +51,8 @@ func _simulate_step(minutes: int, end_minutes: int) -> void:
 			var plot := farm.plot_at(cell)
 			var balance := _water_rates(plot, definition, daylight)
 			plot.moisture = clampf(float(plot.moisture) + float(balance.net) * float(minutes) / 60.0, 0.0, FarmState.MAX_MOISTURE)
+			if crops.advance(plot, minutes, daylight):
+				_matured_this_batch.append({"cell": cell, "crop_id": plot.crop.id})
 	# Apply [start, end) with its original weather, then expose the next block to UI.
 	weather.ensure_period(end_minutes)
 	step_completed.emit({"minutes": minutes, "start_minutes": start_minutes, "end_minutes": end_minutes,
@@ -55,12 +64,13 @@ func _water_rates(plot: Dictionary, definition: Dictionary, daylight: bool) -> D
 	var cover: float = 1.0 if plot.tilled else 0.7
 	var evaporation := float(definition.evap_mm_h) * 100.0 / ROOT_ZONE_MM * cover * (1.0 if daylight else 0.22)
 	var drainage := maxf(0.0, float(plot.moisture) - FIELD_CAPACITY) * DRAINAGE_PER_HOUR
-	return {"rain": rain, "evaporation": evaporation, "drainage": drainage, "net": rain - evaporation - drainage}
+	var transpiration := crops.transpiration_mm_h(plot, daylight) * 100.0 / ROOT_ZONE_MM
+	return {"rain": rain, "evaporation": evaporation, "drainage": drainage, "transpiration": transpiration, "net": rain - evaporation - drainage - transpiration}
 
 
 func water_rates_at(cell: Vector2i) -> Dictionary:
 	if not farm.is_arable(cell):
-		return {"rain": 0.0, "evaporation": 0.0, "drainage": 0.0, "net": 0.0}
+		return {"rain": 0.0, "evaporation": 0.0, "drainage": 0.0, "transpiration": 0.0, "net": 0.0}
 	return _water_rates(farm.plot_at(cell), weather.current(), clock.is_daylight_at(clock.total_minutes))
 
 

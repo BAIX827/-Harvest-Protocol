@@ -30,4 +30,5 @@ Invoke-GodotCheck -CheckName 'boot' -EngineArguments @('--headless', '--path', $
 Invoke-GodotCheck -CheckName 'world' -EngineArguments @('--headless', '--path', $projectRoot, '--script', 'res://tests/test_world.gd') -SuccessMarker 'FIELDWORKS_WORLD_TESTS_OK'
 Invoke-GodotCheck -CheckName 'tools' -EngineArguments @('--headless', '--path', $projectRoot, '--script', 'res://tests/test_tools.gd') -SuccessMarker 'FIELDWORKS_TOOLS_TESTS_OK'
 Invoke-GodotCheck -CheckName 'simulation' -EngineArguments @('--headless', '--path', $projectRoot, '--script', 'res://tests/test_simulation.gd') -SuccessMarker 'FIELDWORKS_SIMULATION_TESTS_OK'
-Write-Host 'PASS: import, startup, world, tools and simulation checks.'
+Invoke-GodotCheck -CheckName 'crops' -EngineArguments @('--headless', '--path', $projectRoot, '--script', 'res://tests/test_crops.gd') -SuccessMarker 'FIELDWORKS_CROP_TESTS_OK'
+Write-Host 'PASS: import, startup, world, tools, environment and crop lifecycle checks.'

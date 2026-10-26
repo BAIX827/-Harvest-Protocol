@@ -37,6 +37,8 @@ func setup(value: ToolController) -> void:
 		button.button_group = seed_group
 		button.pressed.connect(controller.select_seed.bind(seed_id))
 		seed_buttons[seed_id] = button
+		var definition := FarmState.CropCatalog.definition(seed_id)
+		button.tooltip_text = "基准生长期 %.0f 游戏小时；适宜水分 %.0f–%.0f%%。夜间、缺水或过湿会减慢生长。" % [float(definition.growth_minutes) / 60.0, definition.optimal_min, definition.optimal_max]
 		seed_row.add_child(button)
 	_water_label = Label.new()
 	_water_label.add_theme_font_size_override("font_size", 16)

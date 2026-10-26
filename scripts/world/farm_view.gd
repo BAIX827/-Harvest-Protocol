@@ -37,6 +37,7 @@ func _ready() -> void:
 	tools.action_completed.connect(_on_action_completed)
 	tools.selection_changed.connect(_on_tool_changed)
 	simulation.updated.connect(_on_environment_changed)
+	simulation.crops_matured.connect(_on_crops_matured)
 	queue_redraw()
 
 
@@ -155,6 +156,14 @@ func _on_environment_changed() -> void:
 	queue_redraw()
 
 
+func _on_crops_matured(cells: Array) -> void:
+	if cells.size() == 1:
+		var item: Dictionary = cells[0]
+		feedback.emit("地块 (%02d, %02d) 的%s已成熟，按 5 后靠近点击收获。" % [item.cell.x + 1, item.cell.y + 1, FarmState.SEED_NAMES[item.crop_id]])
+	else:
+		feedback.emit("有 %d 块作物已经成熟，按 5 后靠近点击收获。" % cells.size())
+
+
 func _on_action_completed(result: Dictionary) -> void:
 	feedback.emit(result.message)
 	if result.changed or not result.ok:
@@ -196,7 +205,7 @@ func _draw() -> void:
 	for y in range(FarmState.HEIGHT):
 		for x in range(FarmState.WIDTH):
 			_draw_ground(Vector2i(x, y))
-			_draw_sown_marker(Vector2i(x, y))
+			_draw_crop(Vector2i(x, y))
 	# Sort upright objects by their footprint, so the character can pass behind them.
 	for y in range(FarmState.HEIGHT):
 		for x in range(FarmState.WIDTH):
@@ -282,17 +291,63 @@ func _draw_ground(cell: Vector2i) -> void:
 		draw_rect(Rect2(p, Vector2.ONE * TILE), Color(0.1, 0.15, 0.12, 0.25), false, 1.0)
 
 
-func _draw_sown_marker(cell: Vector2i) -> void:
-	var crop: Dictionary = farm.plot_at(cell).crop
+func _draw_crop(cell: Vector2i) -> void:
+	var plot := farm.plot_at(cell)
+	var crop: Dictionary = plot.crop
 	if crop.is_empty():
 		return
 	var p := Vector2(cell) * TILE
 	var tag_colors := {"lettuce": "a9c18b", "carrot": "d4a36b", "tomato": "ba8172"}
-	# Kernels and a crop label denote a sown plot; no grown crop is fabricated.
-	for offset in [Vector2(8, 10), Vector2(20, 17), Vector2(9, 25)]:
-		_pixel(p.x + offset.x, p.y + offset.y, 3, 2, "c5b18a")
+	var stage := simulation.CropModel.stage(crop)
+	var stressed: bool = simulation.crops.water_factor(plot) < 0.6 and stage < 4
+	var leaf: String = "9d985f" if stressed else "719c57"
+	var light_leaf: String = "b2a570" if stressed else "a7bd69"
+	var dark_leaf: String = "736d47" if stressed else "436c45"
+	if stage == 0:
+		for offset in [Vector2(8, 10), Vector2(20, 17), Vector2(9, 25)]:
+			_pixel(p.x + offset.x, p.y + offset.y, 3, 2, "c5b18a")
+	elif stage == 1:
+		for offset in [Vector2(9, 14), Vector2(20, 23)]:
+			_pixel(p.x + offset.x, p.y + offset.y - 3, 2, 6, dark_leaf)
+			_pixel(p.x + offset.x - 3, p.y + offset.y - 4, 4, 3, leaf)
+			_pixel(p.x + offset.x + 1, p.y + offset.y - 6, 4, 3, light_leaf)
+	else:
+		var large: bool = stage >= 3
+		match crop.id:
+			"lettuce":
+				_pixel(p.x + 6, p.y + 23, 21, 4, "443e2d")
+				_pixel(p.x + 5, p.y + 13, 23, 9, dark_leaf)
+				_pixel(p.x + 9, p.y + 8, 15, 18, leaf)
+				_pixel(p.x + 6, p.y + 15, 19, 8, leaf)
+				_pixel(p.x + 13, p.y + 10, 8, 11, light_leaf)
+				if large:
+					_pixel(p.x + 10, p.y + 4, 12, 6, light_leaf)
+					_pixel(p.x + 7, p.y + 12, 4, 7, light_leaf)
+			"carrot":
+				for offset in [Vector2(11, 16), Vector2(22, 23)]:
+					if large:
+						_pixel(p.x + offset.x - 3, p.y + offset.y, 7, 4, "db9b50" if stage == 4 else "b8844e")
+						_pixel(p.x + offset.x - 1, p.y + offset.y + 4, 3, 4, "c67b40")
+					_pixel(p.x + offset.x, p.y + offset.y - 10, 2, 12, dark_leaf)
+					_pixel(p.x + offset.x - 6, p.y + offset.y - 8, 6, 3, leaf)
+					_pixel(p.x + offset.x + 1, p.y + offset.y - 12, 5, 3, light_leaf)
+					_pixel(p.x + offset.x - 3, p.y + offset.y - 4, 8, 3, leaf)
+			"tomato":
+				_pixel(p.x + 18, p.y + 5, 2, 24, "af9668")
+				_pixel(p.x + 13, p.y + 9, 3, 19, dark_leaf)
+				_pixel(p.x + 6, p.y + 12, 18, 4, leaf)
+				_pixel(p.x + 9, p.y + 7, 12, 4, light_leaf)
+				_pixel(p.x + 8, p.y + 20, 17, 4, leaf)
+				if large:
+					var fruit: String = "d27055" if stage == 4 else "b4b36a"
+					_pixel(p.x + 6, p.y + 16, 5, 5, fruit)
+					_pixel(p.x + 18, p.y + 12, 5, 5, fruit)
+					_pixel(p.x + 16, p.y + 24, 5, 5, fruit)
 	_pixel(p.x + 25, p.y + 3, 1, 9, "b1a27d")
 	_pixel(p.x + 23, p.y + 2, 6, 4, tag_colors.get(crop.id, "c5b18a"))
+	if stage == 4:
+		_pixel(p.x + 2, p.y + 2, 3, 5, "e5ce87")
+		_pixel(p.x + 2, p.y + 9, 3, 2, "e5ce87")
 
 
 func _draw_tree(cell: Vector2i) -> void:
