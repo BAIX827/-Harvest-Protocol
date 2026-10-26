@@ -1,2 +1,9 @@
-# -Harvest-Protocol
-# -Harvest-Protocol
+# Harvest Protocol · 田野工程师 Fieldworks
+
+《田野工程师 Fieldworks》项目资料仓库。项目方向为 2D 俯视角像素农业经营，结合设备组装、工程原理学习与农场自动化。
+
+## 项目文档
+
+- [项目总结与设计基准（PDF，18 页）](田野工程师_Fieldworks_项目总结.pdf)
+
+文档整理了已确认的项目方向、视觉基准、玩法循环及初步技术规划。当前仓库用于保存项目资料，尚未包含游戏工程代码。
