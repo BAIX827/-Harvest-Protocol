@@ -81,4 +81,7 @@ func _refresh() -> void:
 		button.text = "%s ×%d" % [FarmState.SEED_NAMES[seed_id], int(controller.farm.seed_stock[seed_id])]
 		button.set_pressed_no_signal(seed_id == controller.selected_seed)
 	_water_label.text = "水壶 %d/%d" % [controller.farm.watering_charges, FarmState.CAN_CAPACITY]
+	_water_label.tooltip_text = "补满水壶固定 %d 币，无论当前剩余次数。" % int(controller.economy.settings.water_refill_cost)
 	_hint_label.text = ToolController.HINTS[controller.active_tool]
+	if controller.active_tool == ToolController.Tool.WATER:
+		_hint_label.text += "（补满 %d 币）" % int(controller.economy.settings.water_refill_cost)

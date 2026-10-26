@@ -6,6 +6,7 @@ signal action_completed(result: Dictionary)
 
 const FarmState = preload("res://scripts/simulation/farm_state.gd")
 const CropModel = preload("res://scripts/simulation/crop_model.gd")
+const Economy = preload("res://scripts/simulation/economy_model.gd")
 const REACH: float = 1.6
 const WATER_INCREMENT: float = 12.0
 
@@ -24,10 +25,12 @@ const HINTS := [
 var farm: FarmState
 var active_tool: int = Tool.INSPECT
 var selected_seed: String = "lettuce"
+var economy: Economy
 
 
-func _init(state: FarmState) -> void:
+func _init(state: FarmState, shared_economy: Economy = null) -> void:
 	farm = state
+	economy = shared_economy if shared_economy != null else Economy.new(farm)
 
 
 func select_tool(tool: int) -> void:
@@ -76,9 +79,11 @@ func use(cell: Vector2i, actor: Vector2) -> Dictionary:
 	if active_tool == Tool.WATER and farm.terrain_at(cell) == FarmState.Terrain.WATER:
 		if farm.watering_charges >= FarmState.CAN_CAPACITY:
 			return _result(false, false, cell, "can_full", "水壶已经装满了。")
-		farm.watering_charges = FarmState.CAN_CAPACITY
-		farm.supplies_changed.emit()
-		return _result(true, true, cell, "refill", "已从池塘补满水壶，可以浇水 %d 次。" % FarmState.CAN_CAPACITY)
+		var fee := int(economy.settings.water_refill_cost)
+		var payment := economy.refill_can()
+		if not payment.ok:
+			return _result(false, false, cell, payment.code, payment.message)
+		return _result(true, true, cell, "refill", "已补满水壶，可以浇水 %d 次，费用 %d 币。" % [FarmState.CAN_CAPACITY, fee])
 	if not farm.is_arable(cell):
 		return _result(false, false, cell, "not_arable", "%s不能耕作，请选择草地或裸土。" % farm.describe(cell).name)
 	var plot := farm.plot_at(cell)

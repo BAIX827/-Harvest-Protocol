@@ -31,4 +31,5 @@ Invoke-GodotCheck -CheckName 'world' -EngineArguments @('--headless', '--path', 
 Invoke-GodotCheck -CheckName 'tools' -EngineArguments @('--headless', '--path', $projectRoot, '--script', 'res://tests/test_tools.gd') -SuccessMarker 'FIELDWORKS_TOOLS_TESTS_OK'
 Invoke-GodotCheck -CheckName 'simulation' -EngineArguments @('--headless', '--path', $projectRoot, '--script', 'res://tests/test_simulation.gd') -SuccessMarker 'FIELDWORKS_SIMULATION_TESTS_OK'
 Invoke-GodotCheck -CheckName 'crops' -EngineArguments @('--headless', '--path', $projectRoot, '--script', 'res://tests/test_crops.gd') -SuccessMarker 'FIELDWORKS_CROP_TESTS_OK'
-Write-Host 'PASS: import, startup, world, tools, environment and crop lifecycle checks.'
+Invoke-GodotCheck -CheckName 'economy' -EngineArguments @('--headless', '--path', $projectRoot, '--script', 'res://tests/test_economy.gd') -SuccessMarker 'FIELDWORKS_ECONOMY_TESTS_OK'
+Write-Host 'PASS: import, startup, world, tools, environment, crops and economy checks.'

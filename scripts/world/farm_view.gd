@@ -10,12 +10,15 @@ const FarmState = preload("res://scripts/simulation/farm_state.gd")
 const Player = preload("res://scripts/world/player.gd")
 const ToolController = preload("res://scripts/world/tool_controller.gd")
 const FarmSimulation = preload("res://scripts/simulation/farm_simulation.gd")
+const Economy = preload("res://scripts/simulation/economy_model.gd")
 const TILE: float = 32.0
 
 var farm := FarmState.new()
 var player := Player.new(FarmState.SPAWN)
-var tools := ToolController.new(farm)
 var simulation := FarmSimulation.new(farm)
+var economy := Economy.new(farm, simulation.clock)
+var tools := ToolController.new(farm, economy)
+var interaction_enabled: bool = true
 var selected_cell := Vector2i(8, 8)
 var hovered_cell := FarmState.INVALID_CELL
 var show_grid: bool = false
@@ -77,6 +80,9 @@ func cell_center(cell: Vector2i) -> Vector2:
 
 
 func _gui_input(event: InputEvent) -> void:
+	if not interaction_enabled:
+		accept_event()
+		return
 	if event is InputEventMouseMotion:
 		_update_hover(event.position)
 	elif event is InputEventMouseButton and event.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT] and event.pressed:
@@ -92,6 +98,8 @@ func _gui_input(event: InputEvent) -> void:
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
+	if not interaction_enabled:
+		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode >= KEY_1 and event.physical_keycode <= KEY_5:
 			tools.select_tool(event.physical_keycode - KEY_1)
@@ -132,7 +140,7 @@ func _process(delta: float) -> void:
 		queue_redraw()
 	_blocked_cooldown = maxf(0.0, _blocked_cooldown - delta)
 	var direction := Vector2.ZERO
-	if get_window().has_focus():
+	if interaction_enabled and get_window().has_focus():
 		direction = Input.get_vector("farm_left", "farm_right", "farm_up", "farm_down")
 	var was_moving := player.moving
 	if player.advance(direction, delta, farm) or was_moving:

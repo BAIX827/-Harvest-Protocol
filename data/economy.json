@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "starting_cash": 600,
+  "starting_seeds": {"lettuce": 12, "carrot": 8, "tomato": 6},
+  "max_buy_quantity": 99,
+  "water_refill_cost": 2,
+  "crops": {
+    "lettuce": {"seed_price": 6, "produce_price": 18},
+    "carrot": {"seed_price": 10, "produce_price": 30},
+    "tomato": {"seed_price": 14, "produce_price": 46}
+  }
+}

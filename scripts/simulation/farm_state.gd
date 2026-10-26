@@ -3,6 +3,7 @@ extends RefCounted
 
 signal plot_changed(cell: Vector2i)
 signal supplies_changed
+signal economy_changed
 
 const WIDTH: int = 24
 const HEIGHT: int = 24
@@ -11,6 +12,7 @@ const SPAWN := Vector2(6.5, 13.5)
 const MAX_MOISTURE: float = 60.0
 const CAN_CAPACITY: int = 8
 const CropCatalog = preload("res://scripts/simulation/crop_catalog.gd")
+const EconomyCatalog = preload("res://scripts/simulation/economy_catalog.gd")
 static var SEED_ORDER: Array[String] = CropCatalog.ids()
 static var SEED_NAMES: Dictionary = CropCatalog.names()
 
@@ -31,12 +33,18 @@ const DESCRIPTIONS := [
 
 var tiles := PackedInt32Array()
 var plots: Array[Dictionary] = []
-var seed_stock: Dictionary = {"lettuce": 12, "carrot": 8, "tomato": 6}
+var seed_stock: Dictionary = EconomyCatalog.initial_seeds()
 var produce_stock: Dictionary = {"lettuce": 0, "carrot": 0, "tomato": 0}
 var watering_charges: int = CAN_CAPACITY
+var cash: int = int(EconomyCatalog.config().starting_cash)
+var parts_stock: Dictionary = {}
+var ledger: Array[Dictionary] = []
+var next_transaction_id: int = 2
+var trade_in_progress: bool = false
 
 
 func _init() -> void:
+	ledger.append({"id": 1, "minute": 480, "category": "opening", "description": "初始资金", "amount": cash, "balance": cash, "items": []})
 	tiles.resize(WIDTH * HEIGHT)
 	tiles.fill(Terrain.GRASS)
 	for _index in range(WIDTH * HEIGHT):

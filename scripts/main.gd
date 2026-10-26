@@ -1,9 +1,10 @@
 extends Control
-## Step 5: crop state drives stage graphics, growth explanations and harvesting.
+## Step 6: farm inventory, market and ledger share the authoritative cash model.
 
 const FarmView = preload("res://scripts/world/farm_view.gd")
 const ToolBar = preload("res://scripts/ui/tool_bar.gd")
 const TimeBar = preload("res://scripts/ui/time_bar.gd")
+const MarketPanel = preload("res://scripts/ui/market_panel.gd")
 
 const BACKGROUND := Color("101b22")
 const PANEL := Color("1a2a33")
@@ -18,6 +19,7 @@ var _capture_path: String = ""
 var farm_view: FarmView
 var tool_bar: ToolBar
 var time_bar: TimeBar
+var market_panel: MarketPanel
 var _selected_title: Label
 var _selected_coords: Label
 var _tile_description: Label
@@ -29,6 +31,8 @@ var _grid_button: Button
 var _plot_details: Label
 var _growth_bar: ProgressBar
 var _produce_label: Label
+var _cash_label: Label
+var _market_button: Button
 
 
 func _ready() -> void:
@@ -207,10 +211,17 @@ func _build_interface() -> void:
 	utility_row.add_child(reset_button)
 	column.add_child(utility_row)
 	column.add_child(HSeparator.new())
-	column.add_child(_label("收获库存", 18))
+	var market_row := HBoxContainer.new()
+	market_row.add_theme_constant_override("separation", 8)
+	_cash_label = _label("", 20, ACCENT)
+	_cash_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	market_row.add_child(_cash_label)
+	_market_button = _button("集市 [B]", _open_market)
+	market_row.add_child(_market_button)
+	column.add_child(market_row)
 	_produce_label = _paragraph("", 17, TEXT)
 	column.add_child(_produce_label)
-	column.add_child(_paragraph("作物成熟后，按 5 收获到库存。\n缺水或过湿会减慢生长。", 17))
+	column.add_child(_paragraph("成熟后按 5 收获，在集市出售收成并补购种子。", 17))
 	var filler := Control.new()
 	filler.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	column.add_child(filler)
@@ -228,7 +239,15 @@ func _build_interface() -> void:
 	_refresh_inspector(farm_view.selected_cell)
 	_refresh_player(farm_view.player.cell())
 	farm_view.farm.supplies_changed.connect(_refresh_produce)
+	farm_view.farm.economy_changed.connect(_refresh_cash)
 	_refresh_produce()
+	_refresh_cash()
+	market_panel = MarketPanel.new()
+	market_panel.name = "MarketPanel"
+	market_panel.setup(farm_view.economy, farm_view.simulation.clock)
+	market_panel.opened.connect(func() -> void: farm_view.interaction_enabled = false)
+	market_panel.closed.connect(_market_closed)
+	add_child(market_panel)
 
 
 func _refresh_inspector(cell: Vector2i) -> void:
@@ -268,6 +287,28 @@ func _refresh_produce() -> void:
 	_produce_label.text = "　".join(items)
 
 
+func _refresh_cash() -> void:
+	_cash_label.text = "资金 %d 币" % farm_view.farm.cash
+
+
+func _open_market() -> void:
+	market_panel.open_market()
+
+
+func _market_closed() -> void:
+	farm_view.interaction_enabled = true
+	farm_view.grab_focus()
+
+
+func _input(event: InputEvent) -> void:
+	if market_panel != null and market_panel.visible and event is InputEventKey and event.pressed and not event.echo:
+		if event.physical_keycode in [KEY_B, KEY_ESCAPE]:
+			market_panel.close_market()
+			get_viewport().set_input_as_handled()
+		elif event.physical_keycode == KEY_SPACE:
+			get_viewport().set_input_as_handled()
+
+
 func _refresh_player(cell: Vector2i) -> void:
 	_player_label.text = "角色位置  (%02d, %02d)" % [cell.x + 1, cell.y + 1]
 
@@ -285,9 +326,13 @@ func _show_feedback(message: String) -> void:
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_SPACE:
-		farm_view.simulation.clock.toggle_paused()
-		get_viewport().set_input_as_handled()
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.physical_keycode == KEY_B:
+			_open_market()
+			get_viewport().set_input_as_handled()
+		elif event.physical_keycode == KEY_SPACE:
+			farm_view.simulation.clock.toggle_paused()
+			get_viewport().set_input_as_handled()
 
 
 func _process(_delta: float) -> void:
