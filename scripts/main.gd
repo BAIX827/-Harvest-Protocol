@@ -1,5 +1,5 @@
 extends Control
-## Step 10: shared farming, measurement and protected automatic irrigation.
+## Step 11: shared farming, measurement, automation and evidence-based teaching.
 
 const FarmView = preload("res://scripts/world/farm_view.gd")
 const ToolBar = preload("res://scripts/ui/tool_bar.gd")
@@ -8,6 +8,7 @@ const MarketPanel = preload("res://scripts/ui/market_panel.gd")
 const WorkbenchPanel = preload("res://scripts/ui/workbench_panel.gd")
 const SensorPanel = preload("res://scripts/ui/sensor_panel.gd")
 const AutomationPanel = preload("res://scripts/ui/automation_panel.gd")
+const SensorLabPanel = preload("res://scripts/ui/sensor_lab_panel.gd")
 const SaveService = preload("res://scripts/persistence/save_service.gd")
 
 const BACKGROUND := Color("101b22")
@@ -27,6 +28,8 @@ var market_panel: MarketPanel
 var workbench_panel: WorkbenchPanel
 var sensor_panel: SensorPanel
 var automation_panel: AutomationPanel
+var lab_panel: SensorLabPanel
+var lab_button: LinkButton
 var sensor_button: Button
 var _engineering_label: Label
 var _selected_title: Label
@@ -179,7 +182,16 @@ func _build_interface() -> void:
 	var preview_column := VBoxContainer.new()
 	preview_column.add_theme_constant_override("separation", 12)
 	preview_panel.add_child(preview_column)
-	preview_column.add_child(_label("农场试验区", 22))
+	var preview_heading := HBoxContainer.new()
+	preview_column.add_child(preview_heading)
+	var preview_title := _label("农场试验区", 22)
+	preview_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	preview_heading.add_child(preview_title)
+	lab_button = LinkButton.new()
+	lab_button.text = "参考实验 / 故障教学 [L]"
+	lab_button.focus_mode = Control.FOCUS_NONE
+	lab_button.pressed.connect(_open_lab)
+	preview_heading.add_child(lab_button)
 	preview_column.add_child(_label("24 × 24 地块 · 走近目标，选择工具后左键操作", 16, MUTED))
 	farm_view.name = "FarmView"
 	farm_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -315,6 +327,16 @@ func _build_interface() -> void:
 	automation_panel.opened.connect(func() -> void: farm_view.interaction_enabled = false)
 	automation_panel.closed.connect(_market_closed)
 	add_child(automation_panel)
+	lab_panel = SensorLabPanel.new()
+	lab_panel.name = "SensorLabPanel"
+	lab_panel.setup(farm_view.learning)
+	lab_panel.opened.connect(func() -> void: farm_view.interaction_enabled = false)
+	lab_panel.closed.connect(_market_closed)
+	lab_panel.navigation_requested.connect(func(destination: String) -> void:
+		if destination == "E": _open_workbench()
+		elif destination == "I": _open_sensor()
+		elif destination == "T": _open_automation())
+	add_child(lab_panel)
 	farm_view.farm.automation_changed.connect(_refresh_engineering)
 	farm_view.farm.sensor_changed.connect(_refresh_sensor_shortcut)
 	farm_view.simulation.clock.controls_changed.connect(_refresh_sensor_shortcut)
@@ -352,6 +374,7 @@ func _setup_save_ui() -> void:
 	farm_view.farm.engineering_changed.connect(_manual_progress)
 	farm_view.farm.sensor_changed.connect(_manual_progress)
 	farm_view.farm.automation_changed.connect(_manual_progress)
+	farm_view.farm.learning_changed.connect(_manual_progress)
 	farm_view.tools.selection_changed.connect(_mark_dirty)
 	farm_view.presentation_changed.connect(_mark_dirty)
 	farm_view.player_position_changed.connect(_manual_progress)
@@ -432,6 +455,7 @@ func _post_save_message(message: String) -> void:
 	if workbench_panel.visible: workbench_panel.receipt_label.text = message
 	if sensor_panel.visible: sensor_panel.receipt_label.text = message
 	if automation_panel.visible: automation_panel.receipt_label.text = message
+	if lab_panel.visible: lab_panel.receipt_label.text = message
 
 
 func _request_load() -> void:
@@ -491,6 +515,7 @@ func _perform_load(use_backup: bool) -> void:
 	if workbench_panel.visible: workbench_panel.close_workbench()
 	if sensor_panel.visible: sensor_panel.close_panel()
 	if automation_panel.visible: automation_panel.close_panel()
+	if lab_panel.visible: lab_panel.close_panel()
 	var applied := save_service.apply_read(farm_view, result)
 	_restoring = false
 	if not applied.ok:
@@ -572,6 +597,7 @@ func _refresh_cash() -> void:
 
 
 func _open_market() -> void:
+	if lab_panel.visible: lab_panel.close_panel()
 	if automation_panel.visible: automation_panel.close_panel()
 	if workbench_panel.visible: workbench_panel.close_workbench()
 	if sensor_panel.visible: sensor_panel.close_panel()
@@ -579,6 +605,7 @@ func _open_market() -> void:
 
 
 func _open_workbench() -> void:
+	if lab_panel.visible: lab_panel.close_panel()
 	if automation_panel.visible: automation_panel.close_panel()
 	if market_panel.visible: market_panel.close_market()
 	if sensor_panel.visible: sensor_panel.close_panel()
@@ -586,6 +613,7 @@ func _open_workbench() -> void:
 
 
 func _open_sensor() -> void:
+	if lab_panel.visible: lab_panel.close_panel()
 	if automation_panel.visible: automation_panel.close_panel()
 	if market_panel.visible: market_panel.close_market()
 	if workbench_panel.visible: workbench_panel.close_workbench()
@@ -593,10 +621,19 @@ func _open_sensor() -> void:
 
 
 func _open_automation() -> void:
+	if lab_panel.visible: lab_panel.close_panel()
 	if market_panel.visible: market_panel.close_market()
 	if workbench_panel.visible: workbench_panel.close_workbench()
 	if sensor_panel.visible: sensor_panel.close_panel()
 	automation_panel.open_panel()
+
+
+func _open_lab() -> void:
+	if market_panel.visible: market_panel.close_market()
+	if workbench_panel.visible: workbench_panel.close_workbench()
+	if sensor_panel.visible: sensor_panel.close_panel()
+	if automation_panel.visible: automation_panel.close_panel()
+	lab_panel.open_panel()
 
 
 func _refresh_sensor_shortcut() -> void:
@@ -622,6 +659,23 @@ func _market_closed() -> void:
 
 func _input(event: InputEvent) -> void:
 	if _dialog_active: return
+	if lab_panel != null and event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_L:
+		if lab_panel.visible: lab_panel.close_panel()
+		else: _open_lab()
+		get_viewport().set_input_as_handled()
+		return
+	if lab_panel != null and lab_panel.visible and event is InputEventKey and event.pressed and not event.echo:
+		if event.physical_keycode in [KEY_L, KEY_ESCAPE]: lab_panel.close_panel()
+		elif event.physical_keycode == KEY_E: _open_workbench()
+		elif event.physical_keycode == KEY_I: _open_sensor()
+		elif event.physical_keycode == KEY_T: _open_automation()
+		elif event.physical_keycode == KEY_B: _open_market()
+		elif event.physical_keycode == KEY_SPACE: farm_view.simulation.clock.toggle_paused()
+		elif event.physical_keycode == KEY_F5: _save_game()
+		elif event.physical_keycode == KEY_F9: _request_load()
+		else: return
+		get_viewport().set_input_as_handled()
+		return
 	if automation_panel != null and automation_panel.visible and event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode in [KEY_T, KEY_ESCAPE]: automation_panel.close_panel()
 		elif event.physical_keycode == KEY_E: _open_workbench()
@@ -687,7 +741,10 @@ func _show_feedback(message: String) -> void:
 func _unhandled_key_input(event: InputEvent) -> void:
 	if _dialog_active: return
 	if event is InputEventKey and event.pressed and not event.echo:
-		if event.physical_keycode == KEY_T:
+		if event.physical_keycode == KEY_L:
+			_open_lab()
+			get_viewport().set_input_as_handled()
+		elif event.physical_keycode == KEY_T:
 			_open_automation()
 			get_viewport().set_input_as_handled()
 		elif event.physical_keycode == KEY_I:

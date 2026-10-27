@@ -119,3 +119,18 @@ func sample_now() -> Dictionary:
 	if not economy.farm.sensor.installed: return _reject("请先安装探头。")
 	economy.farm.trade_in_progress = true
 	return _finish("已完成一次即时采样；暂停时只更新测量，不推进农场时间。")
+
+
+func apply_profile_calibration(soil: String, mount: String, slope: Variant, offset: Variant) -> Dictionary:
+	if _busy(): return _reject("上一项操作正在完成。")
+	var state: Dictionary = economy.farm.sensor
+	var config := Catalog.config()
+	if not state.installed or not state.connected or state.fault != "none": return _reject("请先安装、接通并修复农场探头。")
+	if not config.soils.has(soil) or not config.mounts.has(mount) or not _number(slope, 0.5, 1.5) or not _number(offset, -20, 20): return _reject("实验条件或校准系数无效。")
+	economy.farm.trade_in_progress = true
+	state.soil = soil
+	state.mount = mount
+	state.slope = float(slope)
+	state.offset = float(offset)
+	state.revision += 1
+	return _finish("实验条件和系数已同步到农场探头；位置与真实土壤水分保留。")

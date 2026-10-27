@@ -25,6 +25,7 @@ func _state(view: Control) -> String:
 
 
 func _future(view: Control) -> void:
+	view.learning.sample_now()
 	view.simulation.clock.set_speed(12)
 	view.simulation.clock.set_paused(false)
 	for _index in range(100): view.simulation.advance(0.1)
@@ -94,11 +95,23 @@ func _run() -> void:
 		view.sensor_controller.calibrate(view.simulation.sensor.truth())
 		view.sensor_controller.set_fault("stuck")
 		view.sensor_controller.set_fault("none")
+		view.learning.set_conditions(20.0, "clay", "seated")
+		view.learning.record_point(0)
+		view.learning.set_conditions(40.0, "clay", "seated")
+		view.learning.record_point(1)
+		view.learning.calibrate()
+		_expect(view.learning.apply_to_farm().ok, "Complete an isolated experiment and explicitly sync its verified coefficients.")
 		_expect(view.economy.buy_modules({"controller_basic": 1}).ok and view.simulation.automation.install().ok, "Buy and install the automatic controller.")
 		for pair in [["sensor", "decision"], ["decision", "pump"]]: view.simulation.automation.set_connection(pair[0], 0, pair[1], 0, true)
 		var initial_reading: float = view.simulation.sensor.current(view.simulation.clock.total_minutes).reading
 		view.simulation.automation.set_thresholds(initial_reading + 0.5, initial_reading + 5.0)
 		view.simulation.automation.set_mode("auto")
+		_expect(view.learning.start_fault().ok and view.learning.observe_fault().ok and view.learning.diagnose("signal").ok, "Record a real protected shutdown and its evidence-based diagnosis.")
+		view.sensor_controller.set_connected(true)
+		view.simulation.clock.set_paused(false)
+		view.simulation.advance(0.05)
+		view.simulation.clock.set_paused(true)
+		_expect(view.farm.learning.fault.stage == "complete", "Require actual automatic recovery before serializing completed teaching.")
 		view.simulation.clock.set_paused(false)
 		var band_steps: int = 0
 		while float(view.simulation.sensor.current(view.simulation.clock.total_minutes).reading) < float(view.farm.automation.start) and band_steps < 100:
@@ -120,6 +133,7 @@ func _run() -> void:
 		_expect(view.farm.ledger.size() == 9 and view.farm.cash == 242 and view.farm.watering_charges == 8, "Farming, device, probe, controller, water and energy history remain reconciled.")
 		_expect(view.farm.automation.mode == "auto" and view.farm.automation.latch and view.farm.automation.output and view.farm.automation.code == "hold_on", "The open middle-band latch survives a new process.")
 		_expect(view.farm.sensor.installed and view.simulation.sensor.control_reading(view.simulation.clock.total_minutes).valid and view.farm.sensor.history.size() >= 5, "Calibrated readings, invalid-history gaps and noise state survive a new process.")
+		_expect(not view.farm.learning.experiment.is_empty() and view.farm.learning.fault.stage == "complete" and view.farm.learning.fault.repair.delivered_l > view.farm.learning.fault.resume.delivered_l, "Experimental raw evidence and real fault recovery survive a new process.")
 		_expect(view.simulation.irrigation.status().running and view.farm.engineering.water_l > 0 and view.farm.engineering.water_l < 120.0 and view.farm.engineering.energy_wh > 0 and view.farm.engineering.energy_wh < 60.0, "Partially consumed water, energy and the connected switched-on kit survive process restart.")
 		_expect(not view.farm.plot_at(Vector2i(8, 12)).crop.is_empty() and not view.farm.plot_at(Vector2i(9, 12)).crop.is_empty(), "Unharvested crops remain in the field.")
 		_future(view)

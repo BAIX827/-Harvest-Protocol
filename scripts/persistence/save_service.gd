@@ -2,9 +2,9 @@ extends RefCounted
 ## Verified temporary write + previous valid backup + same-directory replacement.
 
 const Codec = preload("res://scripts/persistence/save_codec.gd")
-const DEFAULT_PATH: String = "user://saves/farm-v4.json"
-const FORMAT_VERSION: int = 4
-const RULES_REVISION: int = 4
+const DEFAULT_PATH: String = "user://saves/farm-v5.json"
+const FORMAT_VERSION: int = 5
+const RULES_REVISION: int = 5
 const MAX_FILE_BYTES: int = 16 * 1024 * 1024
 
 var path: String
@@ -28,10 +28,11 @@ static func _config_hash(legacy: bool = false, legacy_version: int = 1) -> Strin
 	if not legacy or legacy_version >= 2:
 		content.modules = JSON.parse_string(FileAccess.get_file_as_string("res://data/modules.json"))
 		if legacy:
-			content.modules.modules.controller_basic.available = false
+			if legacy_version < 4: content.modules.modules.controller_basic.available = false
 			if legacy_version < 3: content.modules.modules.sensor_basic.available = false
 	if not legacy or legacy_version >= 3: content.sensor = JSON.parse_string(FileAccess.get_file_as_string("res://data/sensor.json"))
-	if not legacy: content.automation = JSON.parse_string(FileAccess.get_file_as_string("res://data/automation.json"))
+	if not legacy or legacy_version >= 4: content.automation = JSON.parse_string(FileAccess.get_file_as_string("res://data/automation.json"))
+	if not legacy: content.learning = JSON.parse_string(FileAccess.get_file_as_string("res://data/learning_tasks.json"))
 	return JSON.stringify(content, "", true, true).sha256_text()
 
 
@@ -45,7 +46,7 @@ func exists() -> bool:
 
 func _legacy_path() -> String:
 	if path != ProjectSettings.globalize_path(DEFAULT_PATH): return ""
-	for version in [3, 2, 1]:
+	for version in [4, 3, 2, 1]:
 		var previous := ProjectSettings.globalize_path("user://saves/farm-v%d.json" % version)
 		if FileAccess.file_exists(previous): return previous
 	return ""
@@ -119,7 +120,7 @@ func _read_file(file_path: String, legacy: bool = false) -> Dictionary:
 	var wrapper: Dictionary = parser.data
 	var legacy_version: int = int(wrapper.get("version", 0)) if wrapper.get("version") is float or wrapper.get("version") is int else 0
 	var version_ok: bool = wrapper.get("version") == FORMAT_VERSION and wrapper.get("rules_revision") == RULES_REVISION
-	if legacy: version_ok = legacy_version in [1, 2, 3] and wrapper.get("version") == legacy_version and wrapper.get("rules_revision") == legacy_version
+	if legacy: version_ok = legacy_version in [1, 2, 3, 4] and wrapper.get("version") == legacy_version and wrapper.get("rules_revision") == legacy_version
 	if wrapper.get("format") != "fieldworks-save" or not version_ok or wrapper.get("float_encoding") != "ieee754-le-hex":
 		return _fail("incompatible_version", "存档格式或规则版本不兼容。")
 	if wrapper.get("engine") != _engine_version() or wrapper.get("config_hash") != _config_hash(legacy, legacy_version):
@@ -133,14 +134,17 @@ func _read_file(file_path: String, legacy: bool = false) -> Dictionary:
 		return _fail("invalid_payload", "存档内容损坏，无法解析。")
 	var payload: Variant = _unpack_floats(payload_parser.data)
 	if legacy and payload is Dictionary:
-		if payload.has("automation"): return _fail("invalid_legacy", "旧版存档不应包含自动规则。")
+		if payload.has("learning"): return _fail("invalid_legacy", "旧版存档不应包含教学证据。")
+		if legacy_version < 4:
+			if payload.has("automation"): return _fail("invalid_legacy", "旧版存档不应包含自动规则。")
+			payload.automation = Codec.Farm.AutomationCatalog.initial_state()
 		if legacy_version < 3:
 			if payload.has("sensor"): return _fail("invalid_legacy", "旧版存档不应包含传感器状态。")
 			payload.sensor = Codec.Farm.SensorCatalog.initial_state()
 		if legacy_version == 1:
 			if payload.has("engineering"): return _fail("invalid_legacy", "原农业版存档不应包含设备状态。")
 			payload.engineering = Codec.Farm.new().engineering.duplicate(true)
-		payload.automation = Codec.Farm.AutomationCatalog.initial_state()
+		payload.learning = Codec.Farm.LearningCatalog.initial_state()
 	var validated := Codec.validate(payload)
 	if not validated.ok:
 		return validated
