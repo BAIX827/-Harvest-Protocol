@@ -1,0 +1,16 @@
+{
+  "water_liters_per_coin": 20,
+  "energy_wh_per_coin": 10,
+  "liters_per_moisture_point": 2,
+  "modules": {
+    "tank_120": {"name": "120 L 水箱", "kind": "tank", "price": 70, "capacity": 120, "available": true},
+    "tank_300": {"name": "300 L 水箱", "kind": "tank", "price": 140, "capacity": 300, "available": true},
+    "pump_eco": {"name": "节能泵", "kind": "pump", "price": 90, "flow_l_h": 48, "power_w": 24, "available": true},
+    "pump_fast": {"name": "高流量泵", "kind": "pump", "price": 150, "flow_l_h": 96, "power_w": 60, "available": true},
+    "battery_60": {"name": "60 Wh 电池", "kind": "power", "price": 60, "capacity": 60, "available": true},
+    "battery_180": {"name": "180 Wh 电池", "kind": "power", "price": 110, "capacity": 180, "available": true},
+    "pipe": {"name": "地埋管段", "kind": "pipe", "price": 4, "available": true},
+    "sensor_basic": {"name": "土壤水分探头", "kind": "sensor", "price": 40, "available": false},
+    "controller_basic": {"name": "双阈值控制器", "kind": "controller", "price": 60, "available": false}
+  }
+}

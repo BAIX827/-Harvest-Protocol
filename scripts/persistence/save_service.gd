@@ -2,9 +2,9 @@ extends RefCounted
 ## Verified temporary write + previous valid backup + same-directory replacement.
 
 const Codec = preload("res://scripts/persistence/save_codec.gd")
-const DEFAULT_PATH: String = "user://saves/farm-v1.json"
-const FORMAT_VERSION: int = 1
-const RULES_REVISION: int = 1
+const DEFAULT_PATH: String = "user://saves/farm-v2.json"
+const FORMAT_VERSION: int = 2
+const RULES_REVISION: int = 2
 const MAX_FILE_BYTES: int = 16 * 1024 * 1024
 
 var path: String
@@ -20,11 +20,12 @@ static func _engine_version() -> String:
 	return "%d.%d.%d" % [info.major, info.minor, info.patch]
 
 
-static func _config_hash() -> String:
+static func _config_hash(legacy: bool = false) -> String:
 	var content := {
 		"crops": JSON.parse_string(FileAccess.get_file_as_string("res://data/crops.json")),
 		"economy": JSON.parse_string(FileAccess.get_file_as_string("res://data/economy.json")),
 	}
+	if not legacy: content.modules = JSON.parse_string(FileAccess.get_file_as_string("res://data/modules.json"))
 	return JSON.stringify(content, "", true, true).sha256_text()
 
 
@@ -33,7 +34,11 @@ static func _fail(code: String, message: String) -> Dictionary:
 
 
 func exists() -> bool:
-	return FileAccess.file_exists(path) or FileAccess.file_exists(path + ".bak")
+	return FileAccess.file_exists(path) or FileAccess.file_exists(path + ".bak") or (not _legacy_path().is_empty() and FileAccess.file_exists(_legacy_path()))
+
+
+func _legacy_path() -> String:
+	return ProjectSettings.globalize_path("user://saves/farm-v1.json") if path == ProjectSettings.globalize_path(DEFAULT_PATH) else ""
 
 
 func envelope(payload: Dictionary) -> Dictionary:
@@ -82,10 +87,12 @@ static func _unpack_floats(value: Variant) -> Variant:
 
 
 func read(use_backup: bool = false) -> Dictionary:
+	if not use_backup and not FileAccess.file_exists(path) and not FileAccess.file_exists(path + ".bak") and not _legacy_path().is_empty() and FileAccess.file_exists(_legacy_path()):
+		return _read_file(_legacy_path(), true)
 	return _read_file(path + ".bak" if use_backup else path)
 
 
-func _read_file(file_path: String) -> Dictionary:
+func _read_file(file_path: String, legacy: bool = false) -> Dictionary:
 	if not FileAccess.file_exists(file_path):
 		return _fail("missing", "尚无可读取的存档。")
 	var file := FileAccess.open(file_path, FileAccess.READ)
@@ -100,9 +107,9 @@ func _read_file(file_path: String) -> Dictionary:
 	if parser.parse(text) != OK or not parser.data is Dictionary:
 		return _fail("invalid_json", "存档文件损坏，无法解析。")
 	var wrapper: Dictionary = parser.data
-	if wrapper.get("format") != "fieldworks-save" or wrapper.get("version") != FORMAT_VERSION or wrapper.get("rules_revision") != RULES_REVISION or wrapper.get("float_encoding") != "ieee754-le-hex":
+	if wrapper.get("format") != "fieldworks-save" or wrapper.get("version") != (1 if legacy else FORMAT_VERSION) or wrapper.get("rules_revision") != (1 if legacy else RULES_REVISION) or wrapper.get("float_encoding") != "ieee754-le-hex":
 		return _fail("incompatible_version", "存档格式或规则版本不兼容。")
-	if wrapper.get("engine") != _engine_version() or wrapper.get("config_hash") != _config_hash():
+	if wrapper.get("engine") != _engine_version() or wrapper.get("config_hash") != _config_hash(legacy):
 		return _fail("incompatible_rules", "存档使用了不同的引擎版本或游戏参数。")
 	if not wrapper.get("payload_json") is String or not wrapper.get("sha256") is String or wrapper.payload_json.sha256_text() != wrapper.sha256:
 		return _fail("checksum", "存档校验失败，内容可能不完整。")
@@ -111,11 +118,15 @@ func _read_file(file_path: String) -> Dictionary:
 	var payload_parser := JSON.new()
 	if payload_parser.parse(wrapper.payload_json) != OK:
 		return _fail("invalid_payload", "存档内容损坏，无法解析。")
-	var validated := Codec.validate(_unpack_floats(payload_parser.data))
+	var payload: Variant = _unpack_floats(payload_parser.data)
+	if legacy and payload is Dictionary:
+		if payload.has("engineering"): return _fail("invalid_legacy", "旧版存档不应包含设备状态。")
+		payload.engineering = Codec.Farm.new().engineering.duplicate(true)
+	var validated := Codec.validate(payload)
 	if not validated.ok:
 		return validated
 	return {"ok": true, "candidate": validated, "saved_at": wrapper.saved_at,
-		"game_minutes": int(validated.runtime.clock.total_minutes), "path": file_path}
+		"game_minutes": int(validated.runtime.clock.total_minutes), "path": file_path, "legacy": legacy}
 
 
 func save(view: Control, pause_override: Variant = null) -> Dictionary:

@@ -6,6 +6,8 @@ const Simulation = preload("res://scripts/simulation/farm_simulation.gd")
 const Player = preload("res://scripts/world/player.gd")
 const Tools = preload("res://scripts/world/tool_controller.gd")
 const Economy = preload("res://scripts/simulation/economy_model.gd")
+const ModuleCatalog = preload("res://scripts/engineering/module_catalog.gd")
+const EngineeringSnapshot = preload("res://scripts/engineering/engineering_snapshot.gd")
 const MAX_MINUTES: int = 525600000
 const MAX_CASH: int = 1000000000000
 
@@ -19,7 +21,7 @@ static func capture(view: Control, pause_override: Variant = null) -> Dictionary
 		"farm": {"width": Farm.WIDTH, "height": Farm.HEIGHT, "tiles": Array(farm.tiles), "plots": farm.plots.duplicate(true),
 			"seeds": farm.seed_stock.duplicate(true), "produce": farm.produce_stock.duplicate(true), "parts": farm.parts_stock.duplicate(true),
 			"cash": farm.cash, "water": farm.watering_charges, "ledger": farm.ledger.duplicate(true), "next_transaction_id": farm.next_transaction_id},
-		"runtime": runtime,
+		"runtime": runtime, "engineering": farm.engineering.duplicate(true),
 		"player": {"position": [view.player.position.x, view.player.position.y], "facing": [view.player.facing.x, view.player.facing.y], "walk_distance": view.player.walk_distance},
 		"view": {"selected_cell": [view.selected_cell.x, view.selected_cell.y], "show_grid": view.show_grid,
 			"tool": view.tools.active_tool, "seed": view.tools.selected_seed},
@@ -104,13 +106,17 @@ static func validate(payload: Variant) -> Dictionary:
 			normalized_crop = {"id": crop.id, "growth": float(crop.growth), "age_minutes": float(crop.age_minutes)}
 			standing[crop.id] += 1
 		farm.plots[index] = {"tilled": plot.tilled, "moisture": float(plot.moisture), "crop": normalized_crop}
-	if not _inventory(data.get("seeds")) or not _inventory(data.get("produce")) or not data.get("parts") is Dictionary or not data.parts.is_empty():
+	if not _inventory(data.get("seeds")) or not _inventory(data.get("produce")) or not data.get("parts") is Dictionary:
 		return _bad("库存无效，或包含当前版本不支持的零件。")
 	if not whole(data.get("cash"), 0, MAX_CASH) or not whole(data.get("water"), 0, Farm.CAN_CAPACITY):
 		return _bad("资金或水壶余量无效。")
 	var ledger_result := _ledger(data.get("ledger"), data.get("next_transaction_id"), int(data.cash), int(clock.total_minutes))
 	if not ledger_result.ok:
 		return ledger_result
+	var engineering_result := EngineeringSnapshot.validate(payload.get("engineering"), data.parts, ledger_result.acquired, ledger_result.entries)
+	if not engineering_result.ok: return engineering_result
+	farm.engineering = engineering_result.state
+	for id in data.parts: farm.parts_stock[id] = int(data.parts[id])
 	for id in Farm.SEED_ORDER:
 		var yield_count := int(Farm.CropCatalog.definition(id).harvest_count)
 		var produced := int(data.produce[id]) + int(ledger_result.sold[id])
@@ -148,6 +154,7 @@ static func _ledger(value: Variant, next_id: Variant, cash: int, now: int) -> Di
 	var entries: Array[Dictionary] = []
 	var bought: Dictionary = {}
 	var sold: Dictionary = {}
+	var acquired: Dictionary = {}
 	for id in Farm.SEED_ORDER:
 		bought[id] = 0
 		sold[id] = 0
@@ -165,25 +172,30 @@ static func _ledger(value: Variant, next_id: Variant, cash: int, now: int) -> Di
 		elif category not in ["seed_purchase", "produce_sale", "water", "energy", "equipment", "maintenance"]:
 			return _bad("交易类别无效。")
 		var items: Array = []
-		if category in ["seed_purchase", "produce_sale"]:
-			if entry.items.is_empty() or entry.items.size() > Farm.SEED_ORDER.size() or (category == "seed_purchase" and entry.items.size() != 1):
+		if category in ["seed_purchase", "produce_sale", "equipment"]:
+			if entry.items.is_empty() or entry.items.size() > (7 if category == "equipment" else Farm.SEED_ORDER.size()) or (category == "seed_purchase" and entry.items.size() != 1):
 				return _bad("交易商品明细无效。")
 			var total: int = 0
 			var seen: Dictionary = {}
 			for item in entry.items:
-				if not item is Dictionary or not item.get("id") is String or not Farm.SEED_NAMES.has(item.id) or seen.has(item.id) or item.get("name") != Farm.SEED_NAMES[item.id]:
+				if not item is Dictionary or not item.get("id") is String or seen.has(item.id):
 					return _bad("账本商品类型重复或无效。")
+				var module := ModuleCatalog.definition(item.id) if category == "equipment" else {}
+				if category == "equipment":
+					if module.is_empty() or not module.available or item.get("name") != module.name: return _bad("账本模块类型无效。")
+				elif not Farm.SEED_NAMES.has(item.id) or item.get("name") != Farm.SEED_NAMES[item.id]: return _bad("账本农产品无效。")
 				if not whole(item.get("quantity"), 1, Economy.MAX_STOCK) or not whole(item.get("unit_price"), 1, 1000000):
 					return _bad("账本商品数量或单价无效。")
-				var expected_price := int(config.crops[item.id].seed_price if category == "seed_purchase" else config.crops[item.id].produce_price)
+				var expected_price: int = int(module.price) if category == "equipment" else int(config.crops[item.id].seed_price if category == "seed_purchase" else config.crops[item.id].produce_price)
 				if int(item.unit_price) != expected_price:
 					return _bad("账本单价与当前规则不匹配。")
 				seen[item.id] = true
 				total += int(item.quantity) * expected_price
-				if category == "seed_purchase": bought[item.id] += int(item.quantity)
+				if category == "equipment": acquired[item.id] = int(acquired.get(item.id, 0)) + int(item.quantity)
+				elif category == "seed_purchase": bought[item.id] += int(item.quantity)
 				else: sold[item.id] += int(item.quantity)
 				items.append({"id": item.id, "name": item.name, "quantity": int(item.quantity), "unit_price": expected_price})
-			if amount != (-total if category == "seed_purchase" else total):
+			if amount != (total if category == "produce_sale" else -total):
 				return _bad("商品明细与结算金额不一致。")
 		elif index > 0 and (amount > 0 or not entry.items.is_empty()):
 			return _bad("费用记录方向或明细无效。")
@@ -194,7 +206,7 @@ static func _ledger(value: Variant, next_id: Variant, cash: int, now: int) -> Di
 		entries.append({"id": index + 1, "minute": last_minute, "category": category, "description": entry.description, "amount": amount, "balance": balance, "items": items})
 	if balance != cash:
 		return _bad("当前资金与账本余额不一致。")
-	return {"ok": true, "entries": entries, "bought": bought, "sold": sold}
+	return {"ok": true, "entries": entries, "bought": bought, "sold": sold, "acquired": acquired}
 
 
 static func apply(view: Control, candidate: Dictionary) -> void:
@@ -205,6 +217,7 @@ static func apply(view: Control, candidate: Dictionary) -> void:
 	target.seed_stock = source.seed_stock.duplicate(true)
 	target.produce_stock = source.produce_stock.duplicate(true)
 	target.parts_stock = source.parts_stock.duplicate(true)
+	target.engineering = source.engineering.duplicate(true)
 	target.cash = source.cash
 	target.watering_charges = source.watering_charges
 	target.ledger.assign(source.ledger.duplicate(true))
@@ -223,6 +236,7 @@ static func apply(view: Control, candidate: Dictionary) -> void:
 	view.simulation.restore_runtime(candidate.runtime)
 	target.supplies_changed.emit()
 	target.economy_changed.emit()
+	target.engineering_changed.emit()
 	view.tools.selection_changed.emit()
 	view.player_moved.emit(view.player.cell())
 	view.tile_selected.emit(view.selected_cell)

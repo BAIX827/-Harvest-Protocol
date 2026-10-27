@@ -4,6 +4,7 @@ extends RefCounted
 signal plot_changed(cell: Vector2i)
 signal supplies_changed
 signal economy_changed
+signal engineering_changed
 
 const WIDTH: int = 24
 const HEIGHT: int = 24
@@ -41,6 +42,11 @@ var parts_stock: Dictionary = {}
 var ledger: Array[Dictionary] = []
 var next_transaction_id: int = 2
 var trade_in_progress: bool = false
+var engineering: Dictionary = {
+	"tank": "", "pump": "", "power": "", "pipes": [], "enabled": false, "power_connected": true,
+	"water_l": 0.0, "energy_wh": 0.0, "water_loaded_l": 0.0, "energy_loaded_wh": 0.0,
+	"delivered_l": 0.0, "used_wh": 0.0, "discarded_water_l": 0.0, "discarded_energy_wh": 0.0,
+}
 
 
 func _init() -> void:

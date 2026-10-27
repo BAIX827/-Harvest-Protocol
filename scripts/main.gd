@@ -1,10 +1,11 @@
 extends Control
-## Step 7: explicit versioned saves, validated loads and unsaved-progress handling.
+## Step 8: shared farm, market and manual irrigation workbench.
 
 const FarmView = preload("res://scripts/world/farm_view.gd")
 const ToolBar = preload("res://scripts/ui/tool_bar.gd")
 const TimeBar = preload("res://scripts/ui/time_bar.gd")
 const MarketPanel = preload("res://scripts/ui/market_panel.gd")
+const WorkbenchPanel = preload("res://scripts/ui/workbench_panel.gd")
 const SaveService = preload("res://scripts/persistence/save_service.gd")
 
 const BACKGROUND := Color("101b22")
@@ -21,6 +22,8 @@ var farm_view: FarmView
 var tool_bar: ToolBar
 var time_bar: TimeBar
 var market_panel: MarketPanel
+var workbench_panel: WorkbenchPanel
+var _engineering_label: Label
 var _selected_title: Label
 var _selected_coords: Label
 var _tile_description: Label
@@ -47,6 +50,7 @@ var _saved_minute: int = -1
 var _saved_controls: Dictionary = {"speed": 1, "paused": false}
 var _previous_actor_cell := Vector2i(6, 13)
 var _loaded_backup: bool = false
+var _loaded_legacy: bool = false
 var _pending_backup: bool = false
 var _dialog_active: bool = false
 var _dialog_was_paused: bool = false
@@ -222,7 +226,7 @@ func _build_interface() -> void:
 	column.add_child(HSeparator.new())
 	_player_label = _label("", 18)
 	column.add_child(_player_label)
-	column.add_child(_paragraph("WASD / 方向键 移动\n1–5 选工具 · Q 选种子\n左键使用工具 · 右键仅检查", 17))
+	column.add_child(_paragraph("WASD 移动 · 右键检查", 16))
 	var utility_row := HBoxContainer.new()
 	utility_row.add_theme_constant_override("separation", 8)
 	_grid_button = _button("网格 [G]", farm_view.toggle_grid)
@@ -243,7 +247,9 @@ func _build_interface() -> void:
 	column.add_child(market_row)
 	_produce_label = _paragraph("", 17, TEXT)
 	column.add_child(_produce_label)
-	column.add_child(_paragraph("成熟后按 5 收获，在集市出售收成并补购种子。", 17))
+	column.add_child(_button("灌溉工作台 [E]", _open_workbench))
+	_engineering_label = _paragraph("尚未组装灌溉装置", 15)
+	column.add_child(_engineering_label)
 	var filler := Control.new()
 	filler.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	column.add_child(filler)
@@ -276,6 +282,17 @@ func _build_interface() -> void:
 	market_panel.opened.connect(func() -> void: farm_view.interaction_enabled = false)
 	market_panel.closed.connect(_market_closed)
 	add_child(market_panel)
+	workbench_panel = WorkbenchPanel.new()
+	workbench_panel.name = "WorkbenchPanel"
+	workbench_panel.setup(farm_view.engineering, farm_view.simulation.clock)
+	workbench_panel.opened.connect(func() -> void: farm_view.interaction_enabled = false)
+	workbench_panel.closed.connect(_market_closed)
+	add_child(workbench_panel)
+	farm_view.farm.engineering_changed.connect(_refresh_engineering)
+	farm_view.simulation.updated.connect(_refresh_engineering)
+	farm_view.simulation.clock.controls_changed.connect(_refresh_engineering)
+	farm_view.engineering.action_completed.connect(func(result: Dictionary) -> void: _show_feedback(result.message))
+	_refresh_engineering()
 
 
 func _setup_save_ui() -> void:
@@ -300,6 +317,7 @@ func _setup_save_ui() -> void:
 	farm_view.tools.action_completed.connect(func(result: Dictionary) -> void:
 		if result.changed: _manual_progress())
 	farm_view.farm.economy_changed.connect(_manual_progress)
+	farm_view.farm.engineering_changed.connect(_manual_progress)
 	farm_view.tools.selection_changed.connect(_mark_dirty)
 	farm_view.presentation_changed.connect(_mark_dirty)
 	farm_view.player_position_changed.connect(_manual_progress)
@@ -324,6 +342,7 @@ func _mark_dirty() -> void:
 
 func _effective_pause() -> bool:
 	if _dialog_active: return _dialog_effective_pause
+	if workbench_panel != null and workbench_panel.visible: return workbench_panel._previous_pause
 	return market_panel._previous_pause if market_panel != null and market_panel.visible else farm_view.simulation.clock.paused
 
 
@@ -338,6 +357,8 @@ func _refresh_save_status() -> void:
 	load_button.disabled = not save_service.exists()
 	if _loaded_backup:
 		save_status.text = "备份已恢复 · 请按 F5 保存"
+	elif _loaded_legacy:
+		save_status.text = "旧版已导入 · 请按 F5 保存"
 	elif _saved_minute >= 0:
 		save_status.text = "%s · 上次 %s" % ["未保存进度" if _dirty else "已保存", _stamp(_saved_minute)]
 	elif save_service.exists() and not _has_progress:
@@ -360,6 +381,7 @@ func _save_game() -> Dictionary:
 		_dirty = false
 		_has_progress = true
 		_loaded_backup = false
+		_loaded_legacy = false
 		_saved_minute = farm_view.simulation.clock.total_minutes
 		_saved_controls = {"speed": farm_view.simulation.clock.speed, "paused": _effective_pause()}
 		_refresh_save_status()
@@ -373,6 +395,7 @@ func _post_save_message(message: String) -> void:
 	_show_feedback(message)
 	if market_panel.visible:
 		market_panel.receipt_label.text = message
+	if workbench_panel.visible: workbench_panel.receipt_label.text = message
 
 
 func _request_load() -> void:
@@ -386,6 +409,8 @@ func _request_load() -> void:
 			return
 		_pending_backup = true
 		_begin_dialog(load_dialog, "主存档无法读取：%s\n发现上一次有效备份（%s）。\n是否读取备份？当前未保存进度将被替换。" % [primary.message, _stamp(backup.game_minutes)])
+	elif primary.get("legacy", false):
+		_begin_dialog(load_dialog, "发现原农业版存档（%s）。\n将保留原文件，导入种植、经营与角色进度。\n当前未保存进度会被替换；导入后按 F5 保存到设备版，是否继续？" % _stamp(primary.game_minutes))
 	elif _has_progress and _dirty:
 		_begin_dialog(load_dialog, "将读取 %s 的存档。\n当前未保存进度将被替换，是否继续？" % _stamp(primary.game_minutes))
 	else:
@@ -427,6 +452,7 @@ func _perform_load(use_backup: bool) -> void:
 	quit_dialog.hide()
 	_dialog_active = false
 	if market_panel.visible: market_panel.close_market()
+	if workbench_panel.visible: workbench_panel.close_workbench()
 	var applied := save_service.apply_read(farm_view, result)
 	_restoring = false
 	if not applied.ok:
@@ -434,13 +460,15 @@ func _perform_load(use_backup: bool) -> void:
 		return
 	farm_view.interaction_enabled = true
 	_has_progress = true
-	_dirty = use_backup
+	_loaded_legacy = result.get("legacy", false)
+	_dirty = use_backup or _loaded_legacy
 	_loaded_backup = use_backup
 	_saved_minute = int(result.game_minutes)
 	_saved_controls = {"speed": farm_view.simulation.clock.speed, "paused": farm_view.simulation.clock.paused}
 	_previous_actor_cell = farm_view.player.cell()
 	_refresh_save_status()
-	_post_save_message("%s：%s。" % ["已恢复备份，请按 F5 保存" if use_backup else "已读取农场", _stamp(_saved_minute)])
+	var prefix: String = "已恢复备份，请按 F5 保存" if use_backup else ("旧版已导入，请按 F5 保存" if _loaded_legacy else "已读取农场")
+	_post_save_message("%s：%s。" % [prefix, _stamp(_saved_minute)])
 	farm_view.grab_focus()
 
 
@@ -476,7 +504,7 @@ func _refresh_inspector(cell: Vector2i) -> void:
 		var crop_name: String = "空地" if plot.crop.is_empty() else FarmView.FarmState.SEED_NAMES[plot.crop.id]
 		var rates := farm_view.simulation.water_rates_at(cell)
 		_plot_details.text = "耕作：%s\n体积含水量：%.1f%%\n水分趋势：%+.1f 百分点/时\n作物：%s" % ["已翻土" if plot.tilled else "未翻土", float(plot.moisture), float(rates.net), crop_name]
-		_plot_details.tooltip_text = "每游戏小时：雨水 +%.2f、蒸发 -%.2f、排水 -%.2f、作物耗水 -%.2f 个百分点。" % [rates.rain, rates.evaporation, rates.drainage, rates.transpiration]
+		_plot_details.tooltip_text = "每游戏小时：雨水 +%.2f、灌溉预计 +%.2f、蒸发 -%.2f、排水 -%.2f、作物耗水 -%.2f 个百分点。灌溉按下一步可用资源估算；暂停时不推进。" % [rates.rain, rates.irrigation, rates.evaporation, rates.drainage, rates.transpiration]
 		if not plot.crop.is_empty():
 			var status := farm_view.simulation.crops.describe(plot, farm_view.simulation.clock.is_daylight_at(farm_view.simulation.clock.total_minutes))
 			_selected_title.text = crop_name + " · " + status.stage
@@ -506,7 +534,23 @@ func _refresh_cash() -> void:
 
 
 func _open_market() -> void:
+	if workbench_panel.visible: workbench_panel.close_workbench()
 	market_panel.open_market()
+
+
+func _open_workbench() -> void:
+	if market_panel.visible: market_panel.close_market()
+	workbench_panel.open_workbench()
+
+
+func _refresh_engineering() -> void:
+	var state: Dictionary = farm_view.farm.engineering
+	if state.tank.is_empty() and state.pump.is_empty() and state.power.is_empty():
+		_engineering_label.text = "按 E 采购模块并连接上方试验田。"
+	else:
+		var status := farm_view.simulation.irrigation.status()
+		var paused: bool = farm_view.simulation.clock.paused
+		_engineering_label.text = "%s%s\n水 %.1f L · 电 %.1f Wh · 出水 %.1f L/h" % ["已暂停 · " if paused else "", status.reason, state.water_l, state.energy_wh, 0.0 if paused else status.flow_l_h]
 
 
 func _market_closed() -> void:
@@ -516,6 +560,14 @@ func _market_closed() -> void:
 
 func _input(event: InputEvent) -> void:
 	if _dialog_active: return
+	if workbench_panel != null and workbench_panel.visible and event is InputEventKey and event.pressed and not event.echo:
+		if event.physical_keycode in [KEY_E, KEY_ESCAPE]: workbench_panel.close_workbench()
+		elif event.physical_keycode == KEY_B: _open_market()
+		elif event.physical_keycode == KEY_F5: _save_game()
+		elif event.physical_keycode == KEY_F9: _request_load()
+		elif event.physical_keycode != KEY_SPACE: return
+		get_viewport().set_input_as_handled()
+		return
 	if market_panel != null and market_panel.visible and event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode in [KEY_B, KEY_ESCAPE]:
 			market_panel.close_market()
@@ -552,7 +604,10 @@ func _show_feedback(message: String) -> void:
 func _unhandled_key_input(event: InputEvent) -> void:
 	if _dialog_active: return
 	if event is InputEventKey and event.pressed and not event.echo:
-		if event.physical_keycode == KEY_B:
+		if event.physical_keycode == KEY_E:
+			_open_workbench()
+			get_viewport().set_input_as_handled()
+		elif event.physical_keycode == KEY_B:
 			_open_market()
 			get_viewport().set_input_as_handled()
 		elif event.physical_keycode == KEY_SPACE:

@@ -14,6 +14,11 @@ class RefusePromotion extends Service:
 		return ERR_CANT_CREATE if to_path == path else super._promote_file(from_path, to_path)
 
 
+class ImportLegacy extends Service:
+	func _legacy_path() -> String:
+		return path + ".v1"
+
+
 func _initialize() -> void:
 	_run.call_deferred()
 
@@ -91,6 +96,7 @@ func _run() -> void:
 	twin.queue_free()
 	await process_frame
 	await _test_rejections()
+	await _test_legacy()
 	await _test_ui()
 	if failures == 0: print("FIELDWORKS_SAVE_TESTS_OK ", checks, " checks")
 	else: print("FIELDWORKS_SAVE_TESTS_FAILED ", failures, "/", checks)
@@ -152,6 +158,32 @@ func _test_rejections() -> void:
 	app.farm_view.farm.trade_in_progress = true
 	_expect(not slot.save(app.farm_view).ok, "An in-progress trade cannot be serialized halfway through.")
 	app.farm_view.farm.trade_in_progress = false
+	app.queue_free()
+	await process_frame
+
+
+func _test_legacy() -> void:
+	var app: Control = await _new_app(directory.path_join("import.json"))
+	_prepare(app.farm_view)
+	await process_frame
+	var service := ImportLegacy.new(directory.path_join("import.json"))
+	var payload := Codec.capture(app.farm_view)
+	var expected := _state(app.farm_view)
+	payload.erase("engineering")
+	var wrapper := service.envelope(payload)
+	wrapper.version = 1
+	wrapper.rules_revision = 1
+	wrapper.config_hash = Service._config_hash(true)
+	var original := JSON.stringify(wrapper)
+	_write(service._legacy_path(), original)
+	app.save_service = service
+	app.farm_view.economy.buy_seeds("lettuce", 1)
+	await _tap(KEY_F9)
+	_expect(app.load_dialog.visible and app.load_dialog.dialog_text.contains("原文件"), "Legacy import asks explicitly before replacing current progress.")
+	await _button(app.load_dialog.get_ok_button())
+	_expect(_state(app.farm_view) == expected and app._loaded_legacy and app._dirty, "A compatible v1 farm imports with an empty device state and prompts saving.")
+	await _tap(KEY_F5)
+	_expect(service.read().ok and not service.read().legacy and FileAccess.get_file_as_string(service._legacy_path()) == original, "Import saves to v2 and leaves every byte of the v1 file untouched.")
 	app.queue_free()
 	await process_frame
 

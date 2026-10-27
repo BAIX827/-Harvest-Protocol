@@ -13,6 +13,7 @@ const Player = preload("res://scripts/world/player.gd")
 const ToolController = preload("res://scripts/world/tool_controller.gd")
 const FarmSimulation = preload("res://scripts/simulation/farm_simulation.gd")
 const Economy = preload("res://scripts/simulation/economy_model.gd")
+const Engineering = preload("res://scripts/engineering/engineering_controller.gd")
 const TILE: float = 32.0
 
 var farm := FarmState.new()
@@ -20,6 +21,7 @@ var player := Player.new(FarmState.SPAWN)
 var simulation := FarmSimulation.new(farm)
 var economy := Economy.new(farm, simulation.clock)
 var tools := ToolController.new(farm, economy)
+var engineering := Engineering.new(economy, simulation.irrigation)
 var interaction_enabled: bool = true
 var selected_cell := Vector2i(8, 8)
 var hovered_cell := FarmState.INVALID_CELL
@@ -43,6 +45,7 @@ func _ready() -> void:
 	tools.selection_changed.connect(_on_tool_changed)
 	simulation.updated.connect(_on_environment_changed)
 	simulation.crops_matured.connect(_on_crops_matured)
+	farm.engineering_changed.connect(queue_redraw)
 	queue_redraw()
 
 
@@ -233,6 +236,7 @@ func _draw() -> void:
 		for x in range(FarmState.WIDTH):
 			_draw_ground(Vector2i(x, y))
 			_draw_crop(Vector2i(x, y))
+	_draw_engineering()
 	# Sort upright objects by their footprint, so the character can pass behind them.
 	for y in range(FarmState.HEIGHT):
 		for x in range(FarmState.WIDTH):
@@ -268,6 +272,51 @@ func _draw() -> void:
 
 func _pixel(x: float, y: float, width: float, height: float, color: String) -> void:
 	draw_rect(Rect2(x, y, width, height), Color(color))
+
+
+func _draw_engineering() -> void:
+	var state: Dictionary = farm.engineering
+	var network := simulation.irrigation
+	var model = Engineering.Network
+	if state.tank.is_empty() and state.pump.is_empty() and state.power.is_empty() and state.pipes.is_empty(): return
+	var active: bool = network.status().running and not simulation.clock.paused
+	var pipe_color := Color("91b6bf") if active else Color("657f89")
+	var nodes: Dictionary = {model.key(model.PUMP): true, model.key(model.OUTLET): true}
+	for pipe in state.pipes: nodes[pipe] = true
+	for pipe in nodes:
+		var point: Vector2i = model.cell(pipe)
+		var center := (Vector2(point) + Vector2.ONE * 0.5) * TILE
+		for direction in model.DIRECTIONS:
+			if nodes.has(model.key(point + direction)):
+				draw_line(center, center + Vector2(direction) * TILE * 0.5, Color("344953"), 7)
+				draw_line(center, center + Vector2(direction) * TILE * 0.5, pipe_color, 3)
+		draw_rect(Rect2(center - Vector2.ONE * 3, Vector2.ONE * 6), pipe_color)
+	var coverage := Rect2(Vector2(model.COVERAGE.position) * TILE, Vector2(model.COVERAGE.size) * TILE)
+	draw_rect(coverage, Color(0.67, 0.76, 0.66, 0.5), false, 1)
+	if not state.tank.is_empty():
+		var p := Vector2(model.TANK) * TILE
+		_pixel(p.x + 4, p.y + 3, 24, 26, "344953")
+		_pixel(p.x + 6, p.y + 5, 20, 22, "78969f")
+		var height := 18.0 * float(state.water_l) / network.capacity("tank")
+		_pixel(p.x + 8, p.y + 25 - height, 16, height, "486e85")
+		_pixel(p.x + 7, p.y + 4, 18, 3, "a6bbc0")
+	if not state.pump.is_empty():
+		var p := Vector2(model.PUMP) * TILE
+		_pixel(p.x + 4, p.y + 9, 24, 16, "344953")
+		_pixel(p.x + 7, p.y + 7, 18, 14, "78969f")
+		_pixel(p.x + 11, p.y + 11, 8, 6, "a9c18b" if active else "455a64")
+	if not state.power.is_empty():
+		var p := Vector2(model.POWER) * TILE
+		_pixel(p.x + 4, p.y + 8, 24, 18, "344953")
+		_pixel(p.x + 6, p.y + 10, 20, 14, "78969f")
+		_pixel(p.x + 8, p.y + 12, 16.0 * float(state.energy_wh) / network.capacity("power"), 10, "cab889")
+		_pixel(p.x + 12, p.y + 5, 8, 3, "a6bbc0")
+	var outlet := (Vector2(model.OUTLET) + Vector2.ONE * 0.5) * TILE
+	draw_circle(outlet, 5, Color("a6bbc0"))
+	if active:
+		for index in range(4):
+			var offset := Vector2(-12 + index * 8, -6 + index % 2 * 12)
+			draw_line(outlet, outlet + offset, Color("91b6bf"), 1)
 
 
 func _draw_ground(cell: Vector2i) -> void:

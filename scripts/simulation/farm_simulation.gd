@@ -9,6 +9,7 @@ const FarmState = preload("res://scripts/simulation/farm_state.gd")
 const SimulationClock = preload("res://scripts/simulation/simulation_clock.gd")
 const WeatherModel = preload("res://scripts/simulation/weather_model.gd")
 const CropModel = preload("res://scripts/simulation/crop_model.gd")
+const Irrigation = preload("res://scripts/engineering/irrigation_network.gd")
 
 const ROOT_ZONE_MM: float = 200.0
 const INFILTRATION: float = 0.85
@@ -19,19 +20,24 @@ var farm: FarmState
 var clock := SimulationClock.new()
 var weather := WeatherModel.new()
 var crops := CropModel.new()
+var irrigation: Irrigation
 var _matured_this_batch: Array[Dictionary] = []
+var _irrigation_changed: bool = false
 
 
 func _init(state: FarmState) -> void:
 	farm = state
+	irrigation = Irrigation.new(farm)
 	clock.stepped.connect(_simulate_step)
 
 
 func advance(real_seconds: float) -> int:
 	_matured_this_batch.clear()
+	_irrigation_changed = false
 	var steps := clock.advance(real_seconds)
 	if steps > 0:
 		updated.emit()
+		if _irrigation_changed: farm.engineering_changed.emit()
 		if not _matured_this_batch.is_empty():
 			crops_matured.emit(_matured_this_batch.duplicate(true))
 	return steps
@@ -43,6 +49,7 @@ func _simulate_step(minutes: int, end_minutes: int) -> void:
 	var definition := weather.current()
 	var interval_kind := weather.kind
 	var daylight := clock.is_daylight_at(start_minutes)
+	if irrigation.advance(minutes): _irrigation_changed = true
 	for y in range(FarmState.HEIGHT):
 		for x in range(FarmState.WIDTH):
 			var cell := Vector2i(x, y)
@@ -70,8 +77,11 @@ func _water_rates(plot: Dictionary, definition: Dictionary, daylight: bool) -> D
 
 func water_rates_at(cell: Vector2i) -> Dictionary:
 	if not farm.is_arable(cell):
-		return {"rain": 0.0, "evaporation": 0.0, "drainage": 0.0, "transpiration": 0.0, "net": 0.0}
-	return _water_rates(farm.plot_at(cell), weather.current(), clock.is_daylight_at(clock.total_minutes))
+		return {"rain": 0.0, "irrigation": 0.0, "evaporation": 0.0, "drainage": 0.0, "transpiration": 0.0, "net": 0.0}
+	var rates := _water_rates(farm.plot_at(cell), weather.current(), clock.is_daylight_at(clock.total_minutes))
+	rates.irrigation = irrigation.preview_rate(cell)
+	rates.net += rates.irrigation
+	return rates
 
 
 func night_opacity() -> float:

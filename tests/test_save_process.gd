@@ -4,6 +4,7 @@ extends SceneTree
 const Service = preload("res://scripts/persistence/save_service.gd")
 const Codec = preload("res://scripts/persistence/save_codec.gd")
 const Tools = preload("res://scripts/world/tool_controller.gd")
+const Network = preload("res://scripts/engineering/irrigation_network.gd")
 var failures: int = 0
 var checks: int = 0
 
@@ -71,6 +72,23 @@ func _run() -> void:
 		view.player.position = Vector2(8.5, 12.5)
 		view.selected_cell = Vector2i(8, 12)
 		view.show_grid = true
+		_expect(view.economy.buy_modules({"tank_120": 1, "pump_eco": 1, "battery_60": 1, "pipe": 3}).ok, "Purchase irrigation hardware after farming and trading.")
+		for id in ["tank_120", "pump_eco", "battery_60"]: view.engineering.install(id)
+		for point in Network.STARTER_ROUTE: view.engineering.pipe(point)
+		_expect(view.engineering.refill("tank").ok and view.engineering.refill("power").ok, "Purchase initial water and energy.")
+		view.player.position = Vector2(11.5, 9.5)
+		for y in range(8, 10):
+			for x in range(10, 13):
+				var point := Vector2i(x, y)
+				view.tools.select_tool(Tools.Tool.HOE)
+				view.tools.use(point, view.player.position)
+				view.tools.select_seed("lettuce")
+				view.tools.use(point, view.player.position)
+		view.engineering.set_enabled(true)
+		_expect(view.simulation.irrigation.status().running, "A connected irrigation system is saved ready to continue.")
+		view.simulation.clock.set_paused(false)
+		view.simulation.advance(0.25)
+		view.simulation.clock.set_paused(true)
 		_expect(service.save(view).ok, "Write the complete farming and trading history.")
 		var expected := {"before": _state(view)}
 		_future(view)
@@ -82,7 +100,8 @@ func _run() -> void:
 		var expected: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(expected_path))
 		_expect(service.load_into(view).ok, "Load after a new operating-system process starts.")
 		_expect(_state(view) == expected.before, "All persisted fields match the terminated writer.")
-		_expect(view.farm.ledger.size() == 4 and view.farm.cash == 586 and view.farm.watering_charges == 8, "Purchase, sale and refill history remain reconciled.")
+		_expect(view.farm.ledger.size() == 7 and view.farm.cash == 342 and view.farm.watering_charges == 8, "Farming and equipment purchase, sale, water and energy history remain reconciled.")
+		_expect(view.simulation.irrigation.status().running and view.farm.engineering.water_l > 0 and view.farm.engineering.water_l < 120.0 and view.farm.engineering.energy_wh > 0 and view.farm.engineering.energy_wh < 60.0, "Partially consumed water, energy and the connected switched-on kit survive process restart.")
 		_expect(not view.farm.plot_at(Vector2i(8, 12)).crop.is_empty() and not view.farm.plot_at(Vector2i(9, 12)).crop.is_empty(), "Unharvested crops remain in the field.")
 		_future(view)
 		_expect(_state(view) == expected.after, "Future weather, growth and moisture match the terminated writer.")

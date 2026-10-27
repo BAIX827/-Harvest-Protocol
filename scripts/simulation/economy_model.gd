@@ -6,6 +6,7 @@ signal transaction_completed(result: Dictionary)
 const FarmState = preload("res://scripts/simulation/farm_state.gd")
 const Clock = preload("res://scripts/simulation/simulation_clock.gd")
 const Catalog = preload("res://scripts/simulation/economy_catalog.gd")
+const ModuleCatalog = preload("res://scripts/engineering/module_catalog.gd")
 const MAX_STOCK: int = 1000000
 const COST_CATEGORIES := ["water", "energy", "equipment", "maintenance"]
 
@@ -47,6 +48,27 @@ func sell_produce(id: String, quantity: Variant = 1) -> Dictionary:
 	if not quantity is int or quantity < 1 or quantity > MAX_STOCK:
 		return _fail("invalid_quantity", "出售数量必须是有效的正整数。")
 	return _sell({id: int(quantity)})
+
+
+func buy_modules(amounts: Dictionary) -> Dictionary:
+	if farm.trade_in_progress: return _fail("busy", "上一笔交易正在完成。")
+	if amounts.is_empty() or amounts.size() > 7: return _fail("invalid_quantity", "请选择工程模块。")
+	var cost: int = 0
+	var items: Array = []
+	for id in amounts:
+		if not id is String: return _fail("unknown_item", "模块 ID 无效。")
+		var definition := ModuleCatalog.definition(id)
+		var quantity: Variant = amounts[id]
+		if definition.is_empty() or not definition.available: return _fail("unknown_item", "该模块尚未开放采购。")
+		if not quantity is int or quantity < 1 or quantity > 100: return _fail("invalid_quantity", "模块数量必须是 1～100 的整数。")
+		if int(farm.parts_stock.get(id, 0)) + int(quantity) > 1000: return _fail("stock_limit", "零件库存已达到上限。")
+		cost += int(definition.price) * int(quantity)
+		items.append({"id": id, "name": definition.name, "quantity": quantity, "unit_price": int(definition.price)})
+	if farm.cash < cost: return _fail("insufficient_cash", "余额不足：需要 %d 币，目前只有 %d 币。" % [cost, farm.cash])
+	farm.trade_in_progress = true
+	farm.cash -= cost
+	for id in amounts: farm.parts_stock[id] = int(farm.parts_stock.get(id, 0)) + int(amounts[id])
+	return _commit("equipment", "采购工程模块", -cost, items)
 
 
 func sell_all() -> Dictionary:
