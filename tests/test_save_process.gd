@@ -94,6 +94,18 @@ func _run() -> void:
 		view.sensor_controller.calibrate(view.simulation.sensor.truth())
 		view.sensor_controller.set_fault("stuck")
 		view.sensor_controller.set_fault("none")
+		_expect(view.economy.buy_modules({"controller_basic": 1}).ok and view.simulation.automation.install().ok, "Buy and install the automatic controller.")
+		for pair in [["sensor", "decision"], ["decision", "pump"]]: view.simulation.automation.set_connection(pair[0], 0, pair[1], 0, true)
+		var initial_reading: float = view.simulation.sensor.current(view.simulation.clock.total_minutes).reading
+		view.simulation.automation.set_thresholds(initial_reading + 0.5, initial_reading + 5.0)
+		view.simulation.automation.set_mode("auto")
+		view.simulation.clock.set_paused(false)
+		var band_steps: int = 0
+		while float(view.simulation.sensor.current(view.simulation.clock.total_minutes).reading) < float(view.farm.automation.start) and band_steps < 100:
+			view.simulation.advance(0.05)
+			band_steps += 1
+		view.simulation.clock.set_paused(true)
+		_expect(view.farm.automation.output and view.farm.automation.code == "hold_on", "Save a genuinely running hysteresis-band latch before terminating the process.")
 		_expect(service.save(view).ok, "Write the complete farming and trading history.")
 		var expected := {"before": _state(view)}
 		_future(view)
@@ -105,7 +117,8 @@ func _run() -> void:
 		var expected: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(expected_path))
 		_expect(service.load_into(view).ok, "Load after a new operating-system process starts.")
 		_expect(_state(view) == expected.before, "All persisted fields match the terminated writer.")
-		_expect(view.farm.ledger.size() == 8 and view.farm.cash == 302 and view.farm.watering_charges == 8, "Farming, device, probe, water and energy history remain reconciled.")
+		_expect(view.farm.ledger.size() == 9 and view.farm.cash == 242 and view.farm.watering_charges == 8, "Farming, device, probe, controller, water and energy history remain reconciled.")
+		_expect(view.farm.automation.mode == "auto" and view.farm.automation.latch and view.farm.automation.output and view.farm.automation.code == "hold_on", "The open middle-band latch survives a new process.")
 		_expect(view.farm.sensor.installed and view.simulation.sensor.control_reading(view.simulation.clock.total_minutes).valid and view.farm.sensor.history.size() >= 5, "Calibrated readings, invalid-history gaps and noise state survive a new process.")
 		_expect(view.simulation.irrigation.status().running and view.farm.engineering.water_l > 0 and view.farm.engineering.water_l < 120.0 and view.farm.engineering.energy_wh > 0 and view.farm.engineering.energy_wh < 60.0, "Partially consumed water, energy and the connected switched-on kit survive process restart.")
 		_expect(not view.farm.plot_at(Vector2i(8, 12)).crop.is_empty() and not view.farm.plot_at(Vector2i(9, 12)).crop.is_empty(), "Unharvested crops remain in the field.")

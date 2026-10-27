@@ -11,6 +11,6 @@
     "battery_180": {"name": "180 Wh 电池", "kind": "power", "price": 110, "capacity": 180, "available": true},
     "pipe": {"name": "地埋管段", "kind": "pipe", "price": 4, "available": true},
     "sensor_basic": {"name": "土壤水分探头", "kind": "sensor", "price": 40, "available": true},
-    "controller_basic": {"name": "双阈值控制器", "kind": "controller", "price": 60, "available": false}
+    "controller_basic": {"name": "双阈值控制器", "kind": "controller", "price": 60, "available": true}
   }
 }

@@ -61,7 +61,7 @@ func _run() -> void:
 func _test_trades() -> void:
 	var f := _fixture()
 	var original := _snapshot(f.farm)
-	for request in [{"pipe": -1}, {"pipe": 0}, {"pipe": 1.0}, {"pipe": true}, {"unknown": 1}, {"controller_basic": 1}, {"tank_300": 100}]:
+	for request in [{"pipe": -1}, {"pipe": 0}, {"pipe": 1.0}, {"pipe": true}, {"unknown": 1}, {"tank_300": 100}]:
 		_expect(not f.economy.buy_modules(request).ok and _snapshot(f.farm) == original, "Invalid or unaffordable purchases change no assets.")
 	_expect(not f.controller.install("pump_eco").ok and _snapshot(f.farm) == original, "Unowned modules cannot be installed.")
 	_assemble(f)

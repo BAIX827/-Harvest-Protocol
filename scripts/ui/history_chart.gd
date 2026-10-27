@@ -7,7 +7,7 @@ var _hover: int = -1
 
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(400, 300)
+	custom_minimum_size = Vector2(maxf(400, custom_minimum_size.x), maxf(180, custom_minimum_size.y))
 	mouse_filter = Control.MOUSE_FILTER_PASS
 	resized.connect(queue_redraw)
 	mouse_exited.connect(func() -> void:

@@ -49,6 +49,7 @@ func _ready() -> void:
 	simulation.crops_matured.connect(_on_crops_matured)
 	farm.engineering_changed.connect(queue_redraw)
 	farm.sensor_changed.connect(queue_redraw)
+	farm.automation_changed.connect(queue_redraw)
 	queue_redraw()
 
 

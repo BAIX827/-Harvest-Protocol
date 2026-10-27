@@ -67,12 +67,25 @@ func targets() -> Array[Vector2i]:
 
 func status() -> Dictionary:
 	var state: Dictionary = farm.engineering
+	var automatic: bool = farm.automation.mode == "auto"
+	var command: bool = farm.automation.output if automatic else state.enabled
+	var safety := precondition()
+	var code: String = safety.code
+	var reason: String = safety.reason
+	if not command:
+		code = "off"
+		reason = Farm.AutomationCatalog.REASONS[farm.automation.code] if automatic else "手动开关已关闭"
+	var pump := Catalog.definition(state.pump)
+	return {"code": code, "reason": reason, "connected": connected(), "running": code == "running",
+		"flow_l_h": float(pump.get("flow_l_h", 0)) if code == "running" else 0.0,
+		"power_w": float(pump.get("power_w", 0)) if code == "running" else 0.0}
+
+
+func precondition() -> Dictionary:
+	var state: Dictionary = farm.engineering
 	var code: String = "running"
 	var reason: String = "供水、管路和供电正常"
-	if not state.enabled:
-		code = "off"
-		reason = "手动开关已关闭"
-	elif state.tank.is_empty() or state.pump.is_empty() or state.power.is_empty():
+	if state.tank.is_empty() or state.pump.is_empty() or state.power.is_empty():
 		code = "missing_module"
 		reason = "请安装水箱、水泵和电池"
 	elif not connected():

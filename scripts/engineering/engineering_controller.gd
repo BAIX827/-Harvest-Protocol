@@ -81,6 +81,7 @@ func pipe(point: Vector2i) -> Dictionary:
 
 func set_enabled(enabled: bool) -> Dictionary:
 	if economy.farm.trade_in_progress: return _reject("上一项操作正在完成。")
+	if economy.farm.automation.mode == "auto": return _reject("当前由自动控制器管理，请先切换手动模式。")
 	if economy.farm.engineering.enabled == enabled: return _reject("开关状态未改变。")
 	economy.farm.trade_in_progress = true
 	economy.farm.engineering.enabled = enabled

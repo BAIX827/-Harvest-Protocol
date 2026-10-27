@@ -1,5 +1,5 @@
 extends Control
-## Step 9: shared farming, irrigation and instrument measurement.
+## Step 10: shared farming, measurement and protected automatic irrigation.
 
 const FarmView = preload("res://scripts/world/farm_view.gd")
 const ToolBar = preload("res://scripts/ui/tool_bar.gd")
@@ -7,6 +7,7 @@ const TimeBar = preload("res://scripts/ui/time_bar.gd")
 const MarketPanel = preload("res://scripts/ui/market_panel.gd")
 const WorkbenchPanel = preload("res://scripts/ui/workbench_panel.gd")
 const SensorPanel = preload("res://scripts/ui/sensor_panel.gd")
+const AutomationPanel = preload("res://scripts/ui/automation_panel.gd")
 const SaveService = preload("res://scripts/persistence/save_service.gd")
 
 const BACKGROUND := Color("101b22")
@@ -25,6 +26,7 @@ var time_bar: TimeBar
 var market_panel: MarketPanel
 var workbench_panel: WorkbenchPanel
 var sensor_panel: SensorPanel
+var automation_panel: AutomationPanel
 var sensor_button: Button
 var _engineering_label: Label
 var _selected_title: Label
@@ -258,6 +260,7 @@ func _build_interface() -> void:
 	sensor_button = _button("测量台 [I]", _open_sensor)
 	sensor_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	engineering_row.add_child(sensor_button)
+	engineering_row.add_child(_button("自动 [T]", _open_automation))
 	_engineering_label = _paragraph("尚未组装灌溉装置", 15)
 	column.add_child(_engineering_label)
 	var filler := Control.new()
@@ -306,6 +309,13 @@ func _build_interface() -> void:
 	sensor_panel.opened.connect(func() -> void: farm_view.interaction_enabled = false)
 	sensor_panel.closed.connect(_market_closed)
 	add_child(sensor_panel)
+	automation_panel = AutomationPanel.new()
+	automation_panel.name = "AutomationPanel"
+	automation_panel.setup(farm_view.simulation.automation, farm_view.economy)
+	automation_panel.opened.connect(func() -> void: farm_view.interaction_enabled = false)
+	automation_panel.closed.connect(_market_closed)
+	add_child(automation_panel)
+	farm_view.farm.automation_changed.connect(_refresh_engineering)
 	farm_view.farm.sensor_changed.connect(_refresh_sensor_shortcut)
 	farm_view.simulation.clock.controls_changed.connect(_refresh_sensor_shortcut)
 	farm_view.sensor_controller.action_completed.connect(func(result: Dictionary) -> void: _show_feedback(result.message))
@@ -341,6 +351,7 @@ func _setup_save_ui() -> void:
 	farm_view.farm.economy_changed.connect(_manual_progress)
 	farm_view.farm.engineering_changed.connect(_manual_progress)
 	farm_view.farm.sensor_changed.connect(_manual_progress)
+	farm_view.farm.automation_changed.connect(_manual_progress)
 	farm_view.tools.selection_changed.connect(_mark_dirty)
 	farm_view.presentation_changed.connect(_mark_dirty)
 	farm_view.player_position_changed.connect(_manual_progress)
@@ -420,6 +431,7 @@ func _post_save_message(message: String) -> void:
 		market_panel.receipt_label.text = message
 	if workbench_panel.visible: workbench_panel.receipt_label.text = message
 	if sensor_panel.visible: sensor_panel.receipt_label.text = message
+	if automation_panel.visible: automation_panel.receipt_label.text = message
 
 
 func _request_load() -> void:
@@ -434,7 +446,7 @@ func _request_load() -> void:
 		_pending_backup = true
 		_begin_dialog(load_dialog, "主存档无法读取：%s\n发现上一次有效备份（%s）。\n是否读取备份？当前未保存进度将被替换。" % [primary.message, _stamp(backup.game_minutes)])
 	elif primary.get("legacy", false):
-		_begin_dialog(load_dialog, "发现第 %d 版存档（%s）。\n将保留原文件，导入已有农场进度。\n当前未保存进度会被替换；导入后按 F5 保存到测量版，是否继续？" % [int(primary.legacy_version), _stamp(primary.game_minutes)])
+		_begin_dialog(load_dialog, "发现第 %d 版存档（%s）。\n将保留原文件，导入已有农场进度。\n当前未保存进度会被替换；导入后按 F5 保存到自动化版，是否继续？" % [int(primary.legacy_version), _stamp(primary.game_minutes)])
 	elif _has_progress and _dirty:
 		_begin_dialog(load_dialog, "将读取 %s 的存档。\n当前未保存进度将被替换，是否继续？" % _stamp(primary.game_minutes))
 	else:
@@ -478,6 +490,7 @@ func _perform_load(use_backup: bool) -> void:
 	if market_panel.visible: market_panel.close_market()
 	if workbench_panel.visible: workbench_panel.close_workbench()
 	if sensor_panel.visible: sensor_panel.close_panel()
+	if automation_panel.visible: automation_panel.close_panel()
 	var applied := save_service.apply_read(farm_view, result)
 	_restoring = false
 	if not applied.ok:
@@ -559,21 +572,31 @@ func _refresh_cash() -> void:
 
 
 func _open_market() -> void:
+	if automation_panel.visible: automation_panel.close_panel()
 	if workbench_panel.visible: workbench_panel.close_workbench()
 	if sensor_panel.visible: sensor_panel.close_panel()
 	market_panel.open_market()
 
 
 func _open_workbench() -> void:
+	if automation_panel.visible: automation_panel.close_panel()
 	if market_panel.visible: market_panel.close_market()
 	if sensor_panel.visible: sensor_panel.close_panel()
 	workbench_panel.open_workbench()
 
 
 func _open_sensor() -> void:
+	if automation_panel.visible: automation_panel.close_panel()
 	if market_panel.visible: market_panel.close_market()
 	if workbench_panel.visible: workbench_panel.close_workbench()
 	sensor_panel.open_panel()
+
+
+func _open_automation() -> void:
+	if market_panel.visible: market_panel.close_market()
+	if workbench_panel.visible: workbench_panel.close_workbench()
+	if sensor_panel.visible: sensor_panel.close_panel()
+	automation_panel.open_panel()
 
 
 func _refresh_sensor_shortcut() -> void:
@@ -599,6 +622,17 @@ func _market_closed() -> void:
 
 func _input(event: InputEvent) -> void:
 	if _dialog_active: return
+	if automation_panel != null and automation_panel.visible and event is InputEventKey and event.pressed and not event.echo:
+		if event.physical_keycode in [KEY_T, KEY_ESCAPE]: automation_panel.close_panel()
+		elif event.physical_keycode == KEY_E: _open_workbench()
+		elif event.physical_keycode == KEY_I: _open_sensor()
+		elif event.physical_keycode == KEY_B: _open_market()
+		elif event.physical_keycode == KEY_SPACE: farm_view.simulation.clock.toggle_paused()
+		elif event.physical_keycode == KEY_F5: _save_game()
+		elif event.physical_keycode == KEY_F9: _request_load()
+		else: return
+		get_viewport().set_input_as_handled()
+		return
 	if sensor_panel != null and sensor_panel.visible and event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode in [KEY_I, KEY_ESCAPE]: sensor_panel.close_panel()
 		elif event.physical_keycode == KEY_E: _open_workbench()
@@ -653,7 +687,10 @@ func _show_feedback(message: String) -> void:
 func _unhandled_key_input(event: InputEvent) -> void:
 	if _dialog_active: return
 	if event is InputEventKey and event.pressed and not event.echo:
-		if event.physical_keycode == KEY_I:
+		if event.physical_keycode == KEY_T:
+			_open_automation()
+			get_viewport().set_input_as_handled()
+		elif event.physical_keycode == KEY_I:
 			_open_sensor()
 			get_viewport().set_input_as_handled()
 		elif event.physical_keycode == KEY_E:

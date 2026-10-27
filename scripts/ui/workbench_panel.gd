@@ -37,6 +37,7 @@ func setup(controller: Controller, shared_clock: Clock) -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	_build()
 	engineering.economy.farm.engineering_changed.connect(_refresh)
+	engineering.economy.farm.automation_changed.connect(_refresh)
 	engineering.economy.farm.economy_changed.connect(_refresh)
 	engineering.economy.farm.supplies_changed.connect(_refresh)
 	engineering.action_completed.connect(func(result: Dictionary) -> void: receipt_label.text = result.message)
@@ -259,6 +260,8 @@ func _refresh() -> void:
 	water_button.disabled = engineering.refill_fee("tank") == 0 or farm.cash < engineering.refill_fee("tank")
 	energy_button.disabled = engineering.refill_fee("power") == 0 or farm.cash < engineering.refill_fee("power")
 	switch_button.text = "关闭水泵" if state.enabled else "打开水泵"
+	switch_button.disabled = farm.automation.mode == "auto"
+	if farm.automation.mode == "auto": switch_button.text = "自动管理 [T]"
 	power_button.text = "断开电源" if state.power_connected else "接通电源"
 	var status := network.status()
 	status_label.text = "%s · %s\n管路%s · %s" % ["运行就绪" if status.running else "停止供水", status.reason, "已连通" if status.connected else "未连通", "编辑中暂停；返回农场后推进" if clock.paused else "随游戏时间推进"]

@@ -9,7 +9,7 @@ static func _number(value: Variant, low: float, high: float) -> bool:
 	return (value is int or value is float) and is_finite(float(value)) and float(value) >= low and float(value) <= high
 
 
-static func validate(data: Variant, parts: Dictionary, acquired: Dictionary, ledger: Array, sensor_installed: bool = false) -> Dictionary:
+static func validate(data: Variant, parts: Dictionary, acquired: Dictionary, ledger: Array, sensor_installed: bool = false, controller_installed: bool = false) -> Dictionary:
 	var bad := {"ok": false, "code": "invalid_engineering", "message": "工程模块、库存或水电资源记录不一致。"}
 	if not data is Dictionary or not data.get("enabled") is bool or not data.get("power_connected") is bool: return bad
 	var counts: Dictionary = {}
@@ -32,6 +32,7 @@ static func validate(data: Variant, parts: Dictionary, acquired: Dictionary, led
 		seen[pipe] = true
 	counts.pipe += data.pipes.size()
 	if sensor_installed: counts.sensor_basic += 1
+	if controller_installed: counts.controller_basic += 1
 	for id in counts:
 		if int(counts[id]) != int(acquired.get(id, 0)): return bad
 	for field in ["water_l", "energy_wh", "water_loaded_l", "energy_loaded_wh", "delivered_l", "used_wh", "discarded_water_l", "discarded_energy_wh"]:

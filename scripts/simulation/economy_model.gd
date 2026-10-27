@@ -52,7 +52,7 @@ func sell_produce(id: String, quantity: Variant = 1) -> Dictionary:
 
 func buy_modules(amounts: Dictionary) -> Dictionary:
 	if farm.trade_in_progress: return _fail("busy", "上一笔交易正在完成。")
-	if amounts.is_empty() or amounts.size() > 8: return _fail("invalid_quantity", "请选择工程模块。")
+	if amounts.is_empty() or amounts.size() > 9: return _fail("invalid_quantity", "请选择工程模块。")
 	var cost: int = 0
 	var items: Array = []
 	for id in amounts:
