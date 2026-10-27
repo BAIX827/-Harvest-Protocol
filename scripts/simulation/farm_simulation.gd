@@ -10,6 +10,7 @@ const SimulationClock = preload("res://scripts/simulation/simulation_clock.gd")
 const WeatherModel = preload("res://scripts/simulation/weather_model.gd")
 const CropModel = preload("res://scripts/simulation/crop_model.gd")
 const Irrigation = preload("res://scripts/engineering/irrigation_network.gd")
+const Sensor = preload("res://scripts/engineering/sensor_model.gd")
 
 const ROOT_ZONE_MM: float = 200.0
 const INFILTRATION: float = 0.85
@@ -21,23 +22,28 @@ var clock := SimulationClock.new()
 var weather := WeatherModel.new()
 var crops := CropModel.new()
 var irrigation: Irrigation
+var sensor: Sensor
 var _matured_this_batch: Array[Dictionary] = []
 var _irrigation_changed: bool = false
+var _sensor_changed: bool = false
 
 
 func _init(state: FarmState) -> void:
 	farm = state
 	irrigation = Irrigation.new(farm)
+	sensor = Sensor.new(farm)
 	clock.stepped.connect(_simulate_step)
 
 
 func advance(real_seconds: float) -> int:
 	_matured_this_batch.clear()
 	_irrigation_changed = false
+	_sensor_changed = false
 	var steps := clock.advance(real_seconds)
 	if steps > 0:
 		updated.emit()
 		if _irrigation_changed: farm.engineering_changed.emit()
+		if _sensor_changed: farm.sensor_changed.emit()
 		if not _matured_this_batch.is_empty():
 			crops_matured.emit(_matured_this_batch.duplicate(true))
 	return steps
@@ -62,6 +68,7 @@ func _simulate_step(minutes: int, end_minutes: int) -> void:
 				_matured_this_batch.append({"cell": cell, "crop_id": plot.crop.id})
 	# Apply [start, end) with its original weather, then expose the next block to UI.
 	weather.ensure_period(end_minutes)
+	if sensor.sample(end_minutes): _sensor_changed = true
 	step_completed.emit({"minutes": minutes, "start_minutes": start_minutes, "end_minutes": end_minutes,
 		"weather_kind": interval_kind, "weather": definition, "daylight": daylight})
 

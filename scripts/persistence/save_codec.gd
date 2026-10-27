@@ -8,6 +8,7 @@ const Tools = preload("res://scripts/world/tool_controller.gd")
 const Economy = preload("res://scripts/simulation/economy_model.gd")
 const ModuleCatalog = preload("res://scripts/engineering/module_catalog.gd")
 const EngineeringSnapshot = preload("res://scripts/engineering/engineering_snapshot.gd")
+const SensorSnapshot = preload("res://scripts/engineering/sensor_snapshot.gd")
 const MAX_MINUTES: int = 525600000
 const MAX_CASH: int = 1000000000000
 
@@ -21,7 +22,7 @@ static func capture(view: Control, pause_override: Variant = null) -> Dictionary
 		"farm": {"width": Farm.WIDTH, "height": Farm.HEIGHT, "tiles": Array(farm.tiles), "plots": farm.plots.duplicate(true),
 			"seeds": farm.seed_stock.duplicate(true), "produce": farm.produce_stock.duplicate(true), "parts": farm.parts_stock.duplicate(true),
 			"cash": farm.cash, "water": farm.watering_charges, "ledger": farm.ledger.duplicate(true), "next_transaction_id": farm.next_transaction_id},
-		"runtime": runtime, "engineering": farm.engineering.duplicate(true),
+		"runtime": runtime, "engineering": farm.engineering.duplicate(true), "sensor": farm.sensor.duplicate(true),
 		"player": {"position": [view.player.position.x, view.player.position.y], "facing": [view.player.facing.x, view.player.facing.y], "walk_distance": view.player.walk_distance},
 		"view": {"selected_cell": [view.selected_cell.x, view.selected_cell.y], "show_grid": view.show_grid,
 			"tool": view.tools.active_tool, "seed": view.tools.selected_seed},
@@ -113,7 +114,10 @@ static func validate(payload: Variant) -> Dictionary:
 	var ledger_result := _ledger(data.get("ledger"), data.get("next_transaction_id"), int(data.cash), int(clock.total_minutes))
 	if not ledger_result.ok:
 		return ledger_result
-	var engineering_result := EngineeringSnapshot.validate(payload.get("engineering"), data.parts, ledger_result.acquired, ledger_result.entries)
+	var sensor_result := SensorSnapshot.validate(payload.get("sensor"), farm, int(clock.total_minutes))
+	if not sensor_result.ok: return sensor_result
+	farm.sensor = sensor_result.state
+	var engineering_result := EngineeringSnapshot.validate(payload.get("engineering"), data.parts, ledger_result.acquired, ledger_result.entries, farm.sensor.installed)
 	if not engineering_result.ok: return engineering_result
 	farm.engineering = engineering_result.state
 	for id in data.parts: farm.parts_stock[id] = int(data.parts[id])
@@ -173,7 +177,7 @@ static func _ledger(value: Variant, next_id: Variant, cash: int, now: int) -> Di
 			return _bad("交易类别无效。")
 		var items: Array = []
 		if category in ["seed_purchase", "produce_sale", "equipment"]:
-			if entry.items.is_empty() or entry.items.size() > (7 if category == "equipment" else Farm.SEED_ORDER.size()) or (category == "seed_purchase" and entry.items.size() != 1):
+			if entry.items.is_empty() or entry.items.size() > (8 if category == "equipment" else Farm.SEED_ORDER.size()) or (category == "seed_purchase" and entry.items.size() != 1):
 				return _bad("交易商品明细无效。")
 			var total: int = 0
 			var seen: Dictionary = {}
@@ -218,6 +222,7 @@ static func apply(view: Control, candidate: Dictionary) -> void:
 	target.produce_stock = source.produce_stock.duplicate(true)
 	target.parts_stock = source.parts_stock.duplicate(true)
 	target.engineering = source.engineering.duplicate(true)
+	target.sensor = source.sensor.duplicate(true)
 	target.cash = source.cash
 	target.watering_charges = source.watering_charges
 	target.ledger.assign(source.ledger.duplicate(true))
@@ -237,6 +242,7 @@ static func apply(view: Control, candidate: Dictionary) -> void:
 	target.supplies_changed.emit()
 	target.economy_changed.emit()
 	target.engineering_changed.emit()
+	target.sensor_changed.emit()
 	view.tools.selection_changed.emit()
 	view.player_moved.emit(view.player.cell())
 	view.tile_selected.emit(view.selected_cell)

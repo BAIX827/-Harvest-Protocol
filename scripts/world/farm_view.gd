@@ -14,6 +14,7 @@ const ToolController = preload("res://scripts/world/tool_controller.gd")
 const FarmSimulation = preload("res://scripts/simulation/farm_simulation.gd")
 const Economy = preload("res://scripts/simulation/economy_model.gd")
 const Engineering = preload("res://scripts/engineering/engineering_controller.gd")
+const SensorController = preload("res://scripts/engineering/sensor_controller.gd")
 const TILE: float = 32.0
 
 var farm := FarmState.new()
@@ -22,6 +23,7 @@ var simulation := FarmSimulation.new(farm)
 var economy := Economy.new(farm, simulation.clock)
 var tools := ToolController.new(farm, economy)
 var engineering := Engineering.new(economy, simulation.irrigation)
+var sensor_controller := SensorController.new(economy, simulation.sensor)
 var interaction_enabled: bool = true
 var selected_cell := Vector2i(8, 8)
 var hovered_cell := FarmState.INVALID_CELL
@@ -46,6 +48,7 @@ func _ready() -> void:
 	simulation.updated.connect(_on_environment_changed)
 	simulation.crops_matured.connect(_on_crops_matured)
 	farm.engineering_changed.connect(queue_redraw)
+	farm.sensor_changed.connect(queue_redraw)
 	queue_redraw()
 
 
@@ -237,6 +240,7 @@ func _draw() -> void:
 			_draw_ground(Vector2i(x, y))
 			_draw_crop(Vector2i(x, y))
 	_draw_engineering()
+	_draw_sensor()
 	# Sort upright objects by their footprint, so the character can pass behind them.
 	for y in range(FarmState.HEIGHT):
 		for x in range(FarmState.WIDTH):
@@ -317,6 +321,15 @@ func _draw_engineering() -> void:
 		for index in range(4):
 			var offset := Vector2(-12 + index * 8, -6 + index % 2 * 12)
 			draw_line(outlet, outlet + offset, Color("91b6bf"), 1)
+
+
+func _draw_sensor() -> void:
+	if not farm.sensor.installed: return
+	var point := simulation.sensor.point()
+	var p := Vector2(point) * TILE
+	_pixel(p.x + 23, p.y + 12, 3, 15, "344953")
+	_pixel(p.x + 20, p.y + 6, 8, 9, "78969f")
+	_pixel(p.x + 22, p.y + 8, 4, 4, "a9c18b" if simulation.sensor.current(simulation.clock.total_minutes).valid else "d49579")
 
 
 func _draw_ground(cell: Vector2i) -> void:

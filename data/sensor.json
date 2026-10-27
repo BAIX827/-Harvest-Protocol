@@ -1,0 +1,21 @@
+{
+  "sample_minutes": 5,
+  "history_limit": 180,
+  "seed": "20261027",
+  "adc_max": 4095,
+  "reference_v": 3.3,
+  "dry_v": 0.5,
+  "volts_per_point": 0.04,
+  "hardware_bias_v": 0.06,
+  "noise_v": 0.008,
+  "soils": {
+    "loam": {"name": "壤土", "gain": 1.0, "offset_v": 0.0},
+    "sand": {"name": "砂土响应", "gain": 0.9, "offset_v": 0.05},
+    "clay": {"name": "黏土响应", "gain": 1.12, "offset_v": 0.08}
+  },
+  "mounts": {
+    "seated": {"name": "接触良好", "offset_v": 0.0},
+    "loose": {"name": "接触松动", "offset_v": -0.16},
+    "shallow": {"name": "浅层安装", "offset_v": 0.12}
+  }
+}

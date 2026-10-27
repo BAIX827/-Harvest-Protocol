@@ -174,7 +174,7 @@ func _build() -> void:
 	switches.add_child(power_button)
 	status_label = _paragraph("")
 	left.add_child(status_label)
-	left.add_child(_paragraph("更换不再收费，旧件退回库存；新水箱与电池为空。缩小容量会丢弃超出部分。传感器与自动控制尚未开放。"))
+	left.add_child(_paragraph("更换不再收费，旧件退回库存；新水箱与电池为空。缩小容量会丢弃超出部分。按 I 打开测量台，自动控制尚未开放。"))
 	var right := VBoxContainer.new()
 	right.custom_minimum_size.x = 560
 	right.add_theme_constant_override("separation", 10)

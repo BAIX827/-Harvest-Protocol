@@ -34,7 +34,8 @@ Invoke-GodotCheck -CheckName 'crops' -EngineArguments @('--headless', '--path', 
 Invoke-GodotCheck -CheckName 'economy' -EngineArguments @('--headless', '--path', $projectRoot, '--script', 'res://tests/test_economy.gd') -SuccessMarker 'FIELDWORKS_ECONOMY_TESTS_OK'
 Invoke-GodotCheck -CheckName 'save' -EngineArguments @('--headless', '--path', $projectRoot, '--script', 'res://tests/test_save.gd') -SuccessMarker 'FIELDWORKS_SAVE_TESTS_OK'
 Invoke-GodotCheck -CheckName 'irrigation' -EngineArguments @('--headless', '--path', $projectRoot, '--script', 'res://tests/test_irrigation.gd') -SuccessMarker 'FIELDWORKS_IRRIGATION_TESTS_OK'
+Invoke-GodotCheck -CheckName 'sensor' -EngineArguments @('--headless', '--path', $projectRoot, '--script', 'res://tests/test_sensor.gd') -SuccessMarker 'FIELDWORKS_SENSOR_TESTS_OK'
 $saveProcessDirectory = Join-Path $qaDirectory ('save-process-' + [guid]::NewGuid().ToString('N'))
 Invoke-GodotCheck -CheckName 'save-write-process' -EngineArguments @('--headless', '--path', $projectRoot, '--script', 'res://tests/test_save_process.gd', '--', 'write', $saveProcessDirectory) -SuccessMarker 'FIELDWORKS_SAVE_PROCESS_WRITE_OK'
 Invoke-GodotCheck -CheckName 'save-read-process' -EngineArguments @('--headless', '--path', $projectRoot, '--script', 'res://tests/test_save_process.gd', '--', 'read', $saveProcessDirectory) -SuccessMarker 'FIELDWORKS_SAVE_PROCESS_READ_OK'
-Write-Host 'PASS: import, startup, world, tools, environment, crops, economy, saves, irrigation and separate-process continuation checks.'
+Write-Host 'PASS: import, startup, world, tools, environment, crops, economy, saves, irrigation, sensors and separate-process continuation checks.'

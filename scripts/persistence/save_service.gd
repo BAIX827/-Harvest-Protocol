@@ -2,9 +2,9 @@ extends RefCounted
 ## Verified temporary write + previous valid backup + same-directory replacement.
 
 const Codec = preload("res://scripts/persistence/save_codec.gd")
-const DEFAULT_PATH: String = "user://saves/farm-v2.json"
-const FORMAT_VERSION: int = 2
-const RULES_REVISION: int = 2
+const DEFAULT_PATH: String = "user://saves/farm-v3.json"
+const FORMAT_VERSION: int = 3
+const RULES_REVISION: int = 3
 const MAX_FILE_BYTES: int = 16 * 1024 * 1024
 
 var path: String
@@ -20,12 +20,15 @@ static func _engine_version() -> String:
 	return "%d.%d.%d" % [info.major, info.minor, info.patch]
 
 
-static func _config_hash(legacy: bool = false) -> String:
+static func _config_hash(legacy: bool = false, legacy_version: int = 1) -> String:
 	var content := {
 		"crops": JSON.parse_string(FileAccess.get_file_as_string("res://data/crops.json")),
 		"economy": JSON.parse_string(FileAccess.get_file_as_string("res://data/economy.json")),
 	}
-	if not legacy: content.modules = JSON.parse_string(FileAccess.get_file_as_string("res://data/modules.json"))
+	if not legacy or legacy_version >= 2:
+		content.modules = JSON.parse_string(FileAccess.get_file_as_string("res://data/modules.json"))
+		if legacy: content.modules.modules.sensor_basic.available = false
+	if not legacy: content.sensor = JSON.parse_string(FileAccess.get_file_as_string("res://data/sensor.json"))
 	return JSON.stringify(content, "", true, true).sha256_text()
 
 
@@ -38,7 +41,11 @@ func exists() -> bool:
 
 
 func _legacy_path() -> String:
-	return ProjectSettings.globalize_path("user://saves/farm-v1.json") if path == ProjectSettings.globalize_path(DEFAULT_PATH) else ""
+	if path != ProjectSettings.globalize_path(DEFAULT_PATH): return ""
+	for version in [2, 1]:
+		var previous := ProjectSettings.globalize_path("user://saves/farm-v%d.json" % version)
+		if FileAccess.file_exists(previous): return previous
+	return ""
 
 
 func envelope(payload: Dictionary) -> Dictionary:
@@ -107,9 +114,12 @@ func _read_file(file_path: String, legacy: bool = false) -> Dictionary:
 	if parser.parse(text) != OK or not parser.data is Dictionary:
 		return _fail("invalid_json", "存档文件损坏，无法解析。")
 	var wrapper: Dictionary = parser.data
-	if wrapper.get("format") != "fieldworks-save" or wrapper.get("version") != (1 if legacy else FORMAT_VERSION) or wrapper.get("rules_revision") != (1 if legacy else RULES_REVISION) or wrapper.get("float_encoding") != "ieee754-le-hex":
+	var legacy_version: int = int(wrapper.get("version", 0)) if wrapper.get("version") is float or wrapper.get("version") is int else 0
+	var version_ok: bool = wrapper.get("version") == FORMAT_VERSION and wrapper.get("rules_revision") == RULES_REVISION
+	if legacy: version_ok = legacy_version in [1, 2] and wrapper.get("version") == legacy_version and wrapper.get("rules_revision") == legacy_version
+	if wrapper.get("format") != "fieldworks-save" or not version_ok or wrapper.get("float_encoding") != "ieee754-le-hex":
 		return _fail("incompatible_version", "存档格式或规则版本不兼容。")
-	if wrapper.get("engine") != _engine_version() or wrapper.get("config_hash") != _config_hash(legacy):
+	if wrapper.get("engine") != _engine_version() or wrapper.get("config_hash") != _config_hash(legacy, legacy_version):
 		return _fail("incompatible_rules", "存档使用了不同的引擎版本或游戏参数。")
 	if not wrapper.get("payload_json") is String or not wrapper.get("sha256") is String or wrapper.payload_json.sha256_text() != wrapper.sha256:
 		return _fail("checksum", "存档校验失败，内容可能不完整。")
@@ -120,13 +130,16 @@ func _read_file(file_path: String, legacy: bool = false) -> Dictionary:
 		return _fail("invalid_payload", "存档内容损坏，无法解析。")
 	var payload: Variant = _unpack_floats(payload_parser.data)
 	if legacy and payload is Dictionary:
-		if payload.has("engineering"): return _fail("invalid_legacy", "旧版存档不应包含设备状态。")
-		payload.engineering = Codec.Farm.new().engineering.duplicate(true)
+		if payload.has("sensor"): return _fail("invalid_legacy", "旧版存档不应包含传感器状态。")
+		if legacy_version == 1:
+			if payload.has("engineering"): return _fail("invalid_legacy", "原农业版存档不应包含设备状态。")
+			payload.engineering = Codec.Farm.new().engineering.duplicate(true)
+		payload.sensor = Codec.Farm.SensorCatalog.initial_state()
 	var validated := Codec.validate(payload)
 	if not validated.ok:
 		return validated
 	return {"ok": true, "candidate": validated, "saved_at": wrapper.saved_at,
-		"game_minutes": int(validated.runtime.clock.total_minutes), "path": file_path, "legacy": legacy}
+		"game_minutes": int(validated.runtime.clock.total_minutes), "path": file_path, "legacy": legacy, "legacy_version": legacy_version if legacy else 0}
 
 
 func save(view: Control, pause_override: Variant = null) -> Dictionary:
