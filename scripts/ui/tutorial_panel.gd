@@ -1,4 +1,6 @@
 extends Control
+const CTheme = preload("res://scripts/ui/c_theme.gd")
+const Presentation = preload("res://scripts/ui/system_presentation.gd")
 ## A live route and measured accounting, without running actions on the player's behalf.
 
 signal opened
@@ -102,11 +104,7 @@ func _build() -> void:
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(dim)
 	_frame = Panel.new()
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color("1a2a33")
-	style.border_color = Color("586b71")
-	style.set_border_width_all(1)
-	_frame.add_theme_stylebox_override("panel", style)
+	_frame.add_theme_stylebox_override("panel", CTheme.panel_style())
 	add_child(_frame)
 	var column := VBoxContainer.new()
 	column.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)

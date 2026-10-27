@@ -3,6 +3,7 @@ extends VBoxContainer
 
 const ToolController = preload("res://scripts/world/tool_controller.gd")
 const FarmState = preload("res://scripts/simulation/farm_state.gd")
+const CTheme = preload("res://scripts/ui/c_theme.gd")
 
 var controller: ToolController
 var tool_buttons: Array[Button] = []
@@ -60,15 +61,7 @@ func _choice_button(text_value: String) -> Button:
 	button.focus_mode = Control.FOCUS_NONE
 	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	button.add_theme_font_size_override("font_size", 17)
-	var selected := StyleBoxFlat.new()
-	selected.bg_color = Color("394e41")
-	selected.border_color = Color("a9c18b")
-	selected.set_border_width_all(1)
-	selected.set_corner_radius_all(6)
-	selected.content_margin_left = 12
-	selected.content_margin_right = 12
-	selected.content_margin_top = 10
-	selected.content_margin_bottom = 10
+	var selected := CTheme.box(Color("394e41"), CTheme.RUNNING, 12, 10)
 	button.add_theme_stylebox_override("pressed", selected)
 	return button
 

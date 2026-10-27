@@ -226,7 +226,7 @@ func _test_live() -> void:
 	view.selected_cell = Vector2i(10, 8)
 	view.tile_selected.emit(view.selected_cell)
 	await _button(panel.switch_button)
-	_expect(view.farm.cash == 348 and view.simulation.irrigation.status().running and panel.status_label.text.contains("运行就绪"), "Real button clicks assemble and refill a working irrigation kit for 252 coins.")
+	_expect(view.farm.cash == 348 and view.simulation.irrigation.status().running and panel.status_label.text.contains("已暂停"), "Real buttons assemble a 252 coin kit; a paused editor does not claim actual flow.")
 	await _tap(KEY_F5)
 	_expect(app.save_service.read().ok, "The assembled kit and engineering purchases pass the complete save validator.")
 	var saved := JSON.stringify(Codec.capture(view), "", true, true)

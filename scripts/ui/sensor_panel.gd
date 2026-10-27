@@ -1,4 +1,6 @@
 extends Control
+const CTheme = preload("res://scripts/ui/c_theme.gd")
+const Presentation = preload("res://scripts/ui/system_presentation.gd")
 ## Live measurement desk. Time keeps its setting; edits never change soil truth.
 
 signal opened
@@ -129,11 +131,7 @@ func _build() -> void:
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(dim)
 	_frame = Panel.new()
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color("1a2a33")
-	style.border_color = Color("586b71")
-	style.set_border_width_all(1)
-	_frame.add_theme_stylebox_override("panel", style)
+	_frame.add_theme_stylebox_override("panel", CTheme.panel_style())
 	add_child(_frame)
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 12)
@@ -258,7 +256,7 @@ func _build() -> void:
 	history_label = _paragraph("")
 	right.add_child(history_label)
 	right.add_child(_paragraph("信号来源：水分响应 + 土壤响应差异 + 安装偏移 + 固定器件偏差 + 独立噪声，再经 ADC 量化。校准只影响之后的换算，不会改写旧曲线。此处为游戏模型。"))
-	receipt_label = _paragraph("采购并安装探头后，先对照真实值，再尝试不同安装方式和校准。自动水泵控制在下一步加入。")
+	receipt_label = _paragraph("采购安装后，对照真实值并检查安装和校准。按 T 连接自动控制；无效测量会触发保护停机。")
 	column.add_child(receipt_label)
 
 
@@ -322,6 +320,7 @@ func _refresh() -> void:
 	calibrate_button.disabled = not measured.valid
 	pause_button.text = "继续 [空格]" if clock.paused else "暂停 [空格]"
 	status_label.text = "%s · %s" % [Chart.stamp(clock.total_minutes), model.REASONS[measured.code]]
+	CTheme.status(status_label, "valid" if measured.valid else ("fault" if state.installed else "idle"))
 	connection_button.text = "断开信号" if state.connected else "接通信号"
 	truth_label.text = "地块 (%d,%d) · 当前真实值 %.2f%%" % [int(state.cell[0]) + 1, int(state.cell[1]) + 1, controller.model.truth()]
 	if measured.raw_adc != null:
@@ -329,7 +328,7 @@ func _refresh() -> void:
 	else:
 		raw_label.text = "原始信号 — · 出厂换算 —\n%s" % model.REASONS[measured.code]
 	converted_label.text = "有效读数 %.2f%% · 采样误差 %+.2f 百分点" % [measured.reading, float(measured.reading) - float(measured.truth)] if measured.valid else "测量无效 · 不提供控制数值"
-	converted_label.add_theme_color_override("font_color", Color("cab889") if measured.valid else Color("d49579"))
+	CTheme.status(converted_label, "warning" if measured.valid else "fault")
 	configuration_label.text = "通道 %s · 配置版本 %d\n当前系数：增益 %.3f，偏移 %+.3f" % [state.instance_id, state.revision, state.slope, state.offset]
 	chart.set_records(state.history)
 	history_label.text = "每 5 游戏分钟采样 · 最近 %d / 180 次 · 累计 %d 次。移动探头或更改配置时断开相应曲线段。" % [state.history.size(), state.sample_count]

@@ -1,4 +1,6 @@
 extends Control
+const CTheme = preload("res://scripts/ui/c_theme.gd")
+const Presentation = preload("res://scripts/ui/system_presentation.gd")
 ## GraphEdit connections write the actual controller, never a decorative copy.
 
 signal opened
@@ -99,11 +101,7 @@ func _build() -> void:
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(dim)
 	_frame = Panel.new()
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color("1a2a33")
-	style.set_border_width_all(1)
-	style.border_color = Color("586b71")
-	_frame.add_theme_stylebox_override("panel", style)
+	_frame.add_theme_stylebox_override("panel", CTheme.panel_style())
 	add_child(_frame)
 	var column := VBoxContainer.new()
 	_frame.add_child(column)
@@ -226,8 +224,12 @@ func _refresh() -> void:
 	node_labels.sensor.text = "有效读数 %.2f%%\n地块 (%d,%d)" % [measured.value, controller.sensor.point().x + 1, controller.sensor.point().y + 1] if measured.valid else "无效测量\n" + measured.reason
 	node_labels.decision.text = "< %.1f%% 启动\n≥ %.1f%% 停止\n中间保持前态" % [state.start, state.stop]
 	var status := controller.network.status()
+	var visual := Presentation.describe(controller.network, economy.clock)
 	node_labels.pump.text = "%s\n水 %.1f L / 电 %.1f Wh" % ["实际供水" if status.running and not economy.clock.paused else "当前未出水", economy.farm.engineering.water_l, economy.farm.engineering.energy_wh]
-	status_label.text = "%s · %s · %s\n水泵：%s" % [Chart.stamp(economy.clock.total_minutes), "自动" if state.mode == "auto" else "手动", state.detail, status.reason]
+	status_label.text = "%s · %s · %s\n控制：%s" % [Chart.stamp(economy.clock.total_minutes), "自动" if state.mode == "auto" else "手动", visual.text, state.detail]
+	CTheme.status(status_label, visual.kind)
+	CTheme.status(node_labels.pump, visual.kind)
+	CTheme.status(node_labels.sensor, "valid" if measured.valid else "fault")
 	chart.set_records(economy.farm.sensor.history)
 	var lines := PackedStringArray(["运行日志 · 最近 %d / 120 次状态 / 参数事件" % state.logs.size()])
 	for index in range(state.logs.size() - 1, -1, -1):

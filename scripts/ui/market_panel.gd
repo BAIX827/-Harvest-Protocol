@@ -1,4 +1,6 @@
 extends Control
+const CTheme = preload("res://scripts/ui/c_theme.gd")
+const Presentation = preload("res://scripts/ui/system_presentation.gd")
 ## A modal market reads the same inventory as the farm and restores pause on close.
 
 signal opened
@@ -97,16 +99,7 @@ func _build() -> void:
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(dim)
 	_frame = PanelContainer.new()
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color("1a2a33")
-	style.border_color = Color("586b71")
-	style.set_border_width_all(1)
-	style.set_corner_radius_all(6)
-	style.content_margin_left = 24
-	style.content_margin_right = 24
-	style.content_margin_top = 20
-	style.content_margin_bottom = 20
-	_frame.add_theme_stylebox_override("panel", style)
+	_frame.add_theme_stylebox_override("panel", CTheme.panel_style())
 	add_child(_frame)
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 12)

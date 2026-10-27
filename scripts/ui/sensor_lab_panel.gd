@@ -1,4 +1,6 @@
 extends Control
+const CTheme = preload("res://scripts/ui/c_theme.gd")
+const Presentation = preload("res://scripts/ui/system_presentation.gd")
 ## Reference controls affect the cup only; task badges follow stored real evidence.
 
 signal opened
@@ -126,11 +128,7 @@ func _build() -> void:
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(dim)
 	_frame = Panel.new()
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color("1a2a33")
-	style.border_color = Color("586b71")
-	style.set_border_width_all(1)
-	_frame.add_theme_stylebox_override("panel", style)
+	_frame.add_theme_stylebox_override("panel", CTheme.panel_style())
 	add_child(_frame)
 	var column := VBoxContainer.new()
 	_frame.add_child(column)
@@ -276,7 +274,7 @@ func _result(result: Dictionary) -> void:
 
 
 func _row_text(row: Dictionary) -> String:
-	if row.is_empty(): return "尚未采样"
+	if row.is_empty() or row.get("code") == "missing": return "尚未采样，请设置样杯并记录参考点。"
 	return "参考 %.2f%% · %.4f V · ADC %d\n出厂换算 %.2f%% · 读数 %s" % [row.truth, row.volts, row.raw_adc, row.factory, "%.2f%%" % row.reading if row.valid else "无效"] if row.raw_adc != null else "信号无效"
 
 
@@ -288,6 +286,7 @@ func _refresh() -> void:
 	var config := Catalog.config()
 	pause_button.text = "继续 [空格]" if controller.simulation.clock.paused else "暂停 [空格]"
 	status_label.text = "实验：%s　故障：%s" % ["已同步完成" if not state.experiment.is_empty() else "待完成", {"idle": "待开始", "observe": "待观察", "diagnose": "待诊断", "repair": "待真实恢复", "complete": "已验证完成"}[task.stage]]
+	CTheme.status(status_label, "running" if task.stage == "complete" else ("warning" if task.stage in ["observe", "diagnose", "repair"] else "stopped"))
 	var lines := PackedStringArray(["当前样杯（独立于农场）", _row_text(controller.current()), ""])
 	for index in range(lab.points.size()): lines.append("参考 %s\n%s\n" % ["A" if index == 0 else "B", _row_text(lab.points[index])])
 	if not lab.verification.is_empty():

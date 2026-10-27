@@ -94,7 +94,7 @@ func _run() -> void:
 
 
 func _test_measurement() -> void:
-	var View = preload("res://scripts/world/farm_view.gd")
+	const View = preload("res://scripts/world/farm_view.gd")
 	var a := View.new()
 	var b := View.new()
 	for view in [a, b]:

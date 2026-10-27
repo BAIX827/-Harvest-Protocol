@@ -1,4 +1,6 @@
 extends Control
+const CTheme = preload("res://scripts/ui/c_theme.gd")
+const Presentation = preload("res://scripts/ui/system_presentation.gd")
 ## Paused editing, live shared inventory, and a clickable underground pipe plan.
 
 signal opened
@@ -100,12 +102,7 @@ func _build() -> void:
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(dim)
 	_frame = Panel.new()
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color("1a2a33")
-	style.border_color = Color("586b71")
-	style.set_border_width_all(1)
-	for edge in ["left", "right", "top", "bottom"]: style.set("content_margin_" + edge, 24.0)
-	_frame.add_theme_stylebox_override("panel", style)
+	_frame.add_theme_stylebox_override("panel", CTheme.panel_style())
 	add_child(_frame)
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 16)
@@ -175,7 +172,7 @@ func _build() -> void:
 	switches.add_child(power_button)
 	status_label = _paragraph("")
 	left.add_child(status_label)
-	left.add_child(_paragraph("更换不再收费，旧件退回库存；新水箱与电池为空。缩小容量会丢弃超出部分。按 I 打开测量台，自动控制尚未开放。"))
+	left.add_child(_paragraph("更换不再收费，旧件退回库存；新水箱与电池为空。缩小容量会丢弃超出部分。按 I 检查测量，按 T 配置自动控制。"))
 	var right := VBoxContainer.new()
 	right.custom_minimum_size.x = 560
 	right.add_theme_constant_override("separation", 10)
@@ -264,7 +261,9 @@ func _refresh() -> void:
 	if farm.automation.mode == "auto": switch_button.text = "自动管理 [T]"
 	power_button.text = "断开电源" if state.power_connected else "接通电源"
 	var status := network.status()
-	status_label.text = "%s · %s\n管路%s · %s" % ["运行就绪" if status.running else "停止供水", status.reason, "已连通" if status.connected else "未连通", "编辑中暂停；返回农场后推进" if clock.paused else "随游戏时间推进"]
+	var visual := Presentation.describe(network, clock)
+	status_label.text = "%s\n管路%s · 编辑中暂停；返回农场后按原时间设置推进" % [visual.text, "已连通" if status.connected else "未连通"]
+	CTheme.status(status_label, visual.kind)
 	buy_pipe_button.text = "采购 5 段管道 · %d 币　（库存 %d 段）" % [int(Catalog.definition("pipe").price) * 5, farm.parts_stock.get("pipe", 0)]
 	buy_pipe_button.disabled = farm.cash < int(Catalog.definition("pipe").price) * 5
 	for point in pipe_buttons:
@@ -272,4 +271,4 @@ func _refresh() -> void:
 		var title: String = {Network.TANK: "水箱", Network.PUMP: "泵", Network.POWER: "电池", Network.OUTLET: "出口"}.get(point, "拆回" if Network.key(point) in state.pipes else "铺管")
 		button.text = "(%d,%d)\n%s" % [point.x + 1, point.y + 1, title]
 		button.disabled = not Network.can_pipe(point)
-		button.add_theme_color_override("font_color", Color("a9c18b") if Network.key(point) in state.pipes else Color("e0e7e4"))
+		button.add_theme_color_override("font_color", Color("b2ced0") if Network.key(point) in state.pipes else CTheme.TEXT)

@@ -2,6 +2,7 @@ extends Control
 ## Plot measured history only. Invalid readings are gaps, never zeros or truth substitutes.
 
 const Sensor = preload("res://scripts/engineering/sensor_model.gd")
+const CTheme = preload("res://scripts/ui/c_theme.gd")
 var records: Array = []
 var _hover: int = -1
 
@@ -22,7 +23,7 @@ func set_records(history: Array) -> void:
 
 
 func _plot() -> Rect2:
-	return Rect2(50, 16, maxf(1, size.x - 70), maxf(1, size.y - 52))
+	return Rect2(50, 32, maxf(1, size.x - 70), maxf(1, size.y - 68))
 
 
 func _point(index: int, field: String) -> Vector2:
@@ -33,13 +34,16 @@ func _point(index: int, field: String) -> Vector2:
 
 
 static func stamp(minute: int) -> String:
-	return "D%d %02d:%02d" % [minute / 1440 + 1, minute % 1440 / 60, minute % 60]
+	return "第%d天 %02d:%02d" % [minute / 1440 + 1, minute % 1440 / 60, minute % 60]
 
 
 func _draw() -> void:
 	var font := get_theme_default_font()
 	var plot := _plot()
 	draw_rect(plot, Color("15242c"))
+	draw_string(font, Vector2(4, 18), "体积含水量 %", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, CTheme.MUTED)
+	draw_string(font, Vector2(150, 18), "真实值", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, CTheme.RUNNING)
+	draw_string(font, Vector2(215, 18), "有效读数", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, CTheme.WARNING)
 	for value in [0, 20, 40, 60]:
 		var y := plot.end.y - float(value) / 60.0 * plot.size.y
 		draw_line(Vector2(plot.position.x, y), Vector2(plot.end.x, y), Color("344953"), 1)
@@ -52,16 +56,17 @@ func _draw() -> void:
 		if index > 0 and records[index - 1].cell == row.cell:
 			draw_line(_point(index - 1, "truth"), _point(index, "truth"), Color("a9c18b"), 2)
 			if row.valid and records[index - 1].valid and row.revision == records[index - 1].revision:
-				draw_line(_point(index - 1, "reading"), _point(index, "reading"), Color("cab889"), 2)
+				draw_line(_point(index - 1, "reading"), _point(index, "reading"), CTheme.WARNING, 2)
 		draw_circle(_point(index, "truth"), 1.5, Color("a9c18b"))
 		if row.valid:
-			draw_circle(_point(index, "reading"), 1.8, Color("cab889"))
+			draw_circle(_point(index, "reading"), 1.8, CTheme.WARNING)
 		else:
 			var p := Vector2(_point(index, "truth").x, plot.end.y + 7)
-			draw_line(p - Vector2(3, 3), p + Vector2(3, 3), Color("d49579"), 1)
-			draw_line(p - Vector2(3, -3), p + Vector2(3, -3), Color("d49579"), 1)
+			draw_line(p - Vector2(3, 3), p + Vector2(3, 3), CTheme.FAULT, 1)
+			draw_line(p - Vector2(3, -3), p + Vector2(3, -3), CTheme.FAULT, 1)
 	draw_string(font, Vector2(plot.position.x, plot.end.y + 25), stamp(int(records[0].minute)), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("9fafaf"))
-	draw_string(font, Vector2(plot.end.x - 100, plot.end.y + 25), stamp(int(records.back().minute)), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("9fafaf"))
+	var end_text := stamp(int(records.back().minute))
+	draw_string(font, Vector2(plot.end.x - font.get_string_size(end_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x, plot.end.y + 25), end_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, CTheme.MUTED)
 	if _hover >= 0 and _hover < records.size():
 		var x := _point(_hover, "truth").x
 		draw_line(Vector2(x, plot.position.y), Vector2(x, plot.end.y), Color("9fafaf"), 1)
