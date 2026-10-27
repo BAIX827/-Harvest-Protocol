@@ -14,7 +14,7 @@
 
 开发过程与关键决定见 [工作记录](docs/WORK_LOG.md)，新旧说明的一致性检查见 [文档审核记录](docs/DOCUMENTATION_AUDIT.md)。[项目协作规则](AGENTS.md) 要求每次开工、关键节点和完成时同步记录并回审旧文档。
 
-第 0～13 步已完成，已串起 **第一块田 → 收获销售与补购 → 手动供水 → 校准实验 → 自动控制 → 故障恢复 → 自主调整验证**，并完成 C 方案首版像素与界面统一。农场显示真实当前目标，H 提供完整路线和经营对照。下一步是第 14 步，整体试玩验收与 Windows 交付。实际检查结果见 [验证记录](docs/TEST_REPORT.md)。
+第 0～14 步已完成，已串起 **第一块田 → 收获销售与补购 → 手动供水 → 校准实验 → 自动控制 → 故障恢复 → 自主调整验证**，完成 C 方案首版像素与界面统一，并通过 Windows 独立试玩包验收。农场显示真实当前目标，H 提供完整路线和经营对照。当前交付 `0.1.0-playtest.1`，后续根据实际试玩反馈修复和规划扩展。实际检查结果见 [验证记录](docs/TEST_REPORT.md)。
 
 当前提供一个手动存档位与上一次有效备份，保存现有农业、经营、设备、测量、自动规则 / 前态 / 日志、专项教学，以及作业 / 模式水电计量和自主调整证据；可选择手动或自动模式。
 
@@ -224,7 +224,15 @@ Windows 存档文件为 `%APPDATA%\Godot\app_userdata\田野工程师 · Fieldwo
 
 旧档没有手工作业与模式分类历史，因此从导入时开始计量，之前水电总量显示为“导入前未分类”；真实销售、采购与已完成教学仍可用于目标判断。人工浇水或手动供水等旧档没有证据的目标需要做一次新操作。无备份的损坏或不兼容文件会显示失败原因，保留当前农场。
 
-## 在 Windows 上启动
+## Windows 试玩版与源码启动
+
+**独立试玩包：** 本机 `builds/Fieldworks-0.1.0-playtest.1-windows-x86_64.zip`。完整解压后双击 `Fieldworks.exe`，保留同目录的 `Fieldworks.pck`，无需安装 Godot 或开发工具。先阅读包内 `PLAYTEST_ZH.md`，仓库中对应 [Windows 试玩说明](docs/WINDOWS_PLAYTEST.md)，包含首轮路线、存档路径、退出方式、已知限制和反馈方法。
+
+包内提供版本 / 源提交信息、文件 SHA-256、Godot 许可和第三方声明。试玩包未签名，可能显示未知发布者；核对来源和校验值后按系统提示处理。只在本机 Windows x86_64 / OpenGL Compatibility 环境验收，Mac / ARM、其他显卡与高 DPI 组合、实际断电耐久性未验证。源码版与独立包使用同一 v6 用户存档目录，启动不自动覆盖已有档位。
+
+ZIP、导出程序和引擎由 Git 忽略，当前二进制交付在本机 builds；GitHub 保存源代码、预设、构建 / 包检查脚本和文档，未将本地包冒充 GitHub Release 附件。
+
+**源码启动：**
 
 引擎固定为 Godot 4.7.2 标准版，使用 GDScript 和 Compatibility 渲染。首次启动会将官方便携版下载到本项目 `.tools/`，核对 SHA-256 后解压，无需修改系统安装。也可以手动准备相同版本。启动脚本启用 Godot 的 self-contained 模式，编辑器配置保存在 `.tools/godot/editor_data/` 内。游戏运行日志与存档使用 Godot 的标准 `user://` 目录；Windows 默认为 `%APPDATA%\Godot\app_userdata\田野工程师 · Fieldworks\`。
 
@@ -247,3 +255,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\check-project.ps1
 ```
 
 Mac 可使用同版本 Godot 直接打开 `project.godot`；目前尚未进行 Mac 实机验证。便携引擎、Godot 缓存和临时验证文件均由 Git 忽略，不上传仓库。
+
+从源码复现 Windows 包（默认先执行完整检查；首次下载官方匹配模板并校验 SHA-512）：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\build-windows.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\check-windows-package.ps1
+```
+
+包检查会在 tmp 的全新中文 / 空格路径解压 ZIP，校验全部文件，使用实际 release 程序正常启动，再在独立目录验证完整路线、重启继续、保存退出和放弃退出；不会写玩家正式档。`-SkipChecks` 仅供已完成源码检查的开发迭代使用，BUILD_INFO 会记录跳过状态；最终交付默认执行完整检查。

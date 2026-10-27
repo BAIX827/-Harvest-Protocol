@@ -369,3 +369,29 @@
 - 模拟配置、价格、成长与控制规则不变，继续 v6 与 v1～v5 导入。缩放 / 音频不进入 Codec，读档重置全图，声音保留当前会话；重启默认全图 / 静音。
 - `test_presentation.gd` 覆盖近景命中 / 越界 / 原工具距离、音频触发、真实供水 / 暂停重绘、状态优先级、原生菜单 / 输入、自然成熟与原格式保存。原路线 / 节点图 / 存档继续回归。
 - 文档用两张原生截图归档于 `docs/images`，`docs/.gdignore` 避免文档图片进入游戏资源扫描；其他截图与隔离档仍在 tmp。第 14 步试玩交付、Mac 与断电耐久性验证继续待办。
+
+## 第 14 步实现规格 · Windows 独立交付
+
+### 导出技术与可复现输入
+
+- 固定 Godot `4.7.2.stable.official.ed1daf0bf`、GDScript / Compatibility，目标 Windows x86_64 release。复用官方导出系统，不加入安装器、外部游戏框架或引擎迁移。
+- 参考官方 [项目导出](https://docs.godotengine.org/en/stable/tutorials/export/exporting_projects.html) 与 [Windows 导出](https://docs.godotengine.org/en/stable/tutorials/export/exporting_for_windows.html)，再以锁定版本的实际导出验证。选择分离 EXE + PCK，便于清点资源与校验；PCK 单独不是可执行程序。
+- `setup-export-templates.ps1` 下载同版本标准 TPZ，使用官方 SHA512-SUMS 的固定 SHA-512 校验完整归档；核对 version.txt 后只提取 Windows debug / release x86_64 模板至 `.tools/export-templates/4.7.2.stable`。不写系统模板目录。官方地址为 `godotengine/godot-builds` 的 `4.7.2-stable` release。
+- `export_presets.cfg` 固定自定义模板路径、架构、版本资源与非内嵌 PCK，不签名、不生成控制台 wrapper；图标使用项目原 SVG。七份 data/*.json 显式包含，tests / docs / PDF / Markdown / tools 排除；生产脚本编译为 GDC。游戏图标、资源与配置在独立程序中实际核对。
+
+### 构建和分发内容
+
+- `build-windows.ps1` 校验引擎版本，缺失则复用 setup-godot；默认执行完整源码检查，再校验模板与导出日志。每次使用新的 stage-GUID 文件夹，避免旧产物混入；只更新本项目已知 ZIP / SHA 输出，无递归清理或玩家档操作。
+- 包名 `Fieldworks-0.1.0-playtest.1-windows-x86_64.zip`。包含 Fieldworks.exe、Fieldworks.pck、PLAYTEST_ZH.md、README.md、BUILD_INFO.json、SHA256SUMS.txt、GODOT_LICENSE.txt 和 GODOT_COPYRIGHT.txt。包内 README 移除源码专用本地链接 / 图片引用，保留操作文字和网页链接。
+- BUILD_INFO 记录包版本、源提交、工作区 dirty、引擎、目标、渲染、v6、时间、是否跳过源码检查及未签名。SHA256SUMS 覆盖除此清单自身之外的全部七份文件；ZIP 同目录另有 `.zip.sha256`。校验用于检查文件一致性，不代替可信下载来源或签名。
+- `-SkipChecks` 仅用于已通过检查后的开发迭代；最终交付从干净提交使用默认检查构建，并再跑包验收。构建时间与归档时间戳会改变 ZIP 哈希，不宣称逐字节可复现。
+- builds / .tools / tmp 已有 Git 忽略，构建生成 `.gdignore` 避免扫描产物。仓库提交预设、脚本、文档、许可与验收器，二进制留本地 builds，不冒称已发布 GitHub Release。
+- 许可取自同版本官方 Godot 源码的 LICENSE.txt / COPYRIGHT.txt，原文保存；系统中文字体不随包分发。Windows 试玩说明明确存档共享、未知发布者、首轮路线与问题反馈。
+
+### release 原生验收与存档边界
+
+- 标准 release 禁止编辑器外置脚本路由，因此主场景提供显式 `-- --verify-release=<绝对隔离目录> --verify-phase=write|read|quit-save|discard`。参数不齐或不合法时报错退出；正常双击不载入验收器。路径在 SaveService 创建前替换，仅此显式模式使用隔离 farm-v6.json，普通路径仍是 user://saves/farm-v6.json。
+- `scripts/verification/release_verifier.gd` 使用同一生产主场景、模型和真实按钮，执行合法种植 / 自然成长 / 销售、采购 / 供水、独立参考样本校准、保护 / 修复和自主阈值验证。仅为工具动作设置合法角色位置；不直接设农田水分、成熟度或传感器读数。加速检查复用同一固定步模拟，源码原生正常帧完整路线另验。
+- 四阶段以独立操作系统进程运行：write 完成九目标、保存实际运行的自动前态；read 精确比较全部持久字段并实际继续供水、取消退出；quit-save 用实际按钮写档；discard 在新进程精确读回后修改，并确认真实放弃信号且原文件字节不变。输出仅在隔离目录，留日志 / JSON / 截图，不上传测试档。
+- `check-windows-package.ps1` 核对归档条目位于全新 tmp 解压目录、八文件清单与完整 SHA-256 覆盖，在中文 / 空格路径以同目录 PCK 运行。先走无验收覆盖的正常 smoke 启动（不写玩家档），再跑四个原生阶段；退出码、日志错误、标记与 JSON 结果都纳入通过条件。
+- 不改生产参数和 Codec，继续 v6 及已有 v1～v5 兼容；旧档提示文案改为“当前 v6 档位”。本步通过 Windows 首版交付，Mac / ARM、多设备与高 DPI、签名、实际断电和完整概念设施不在已验证范围。

@@ -1,5 +1,5 @@
 extends Control
-## Step 13: shared C presentation and consistent native panel operations.
+## Shared farm UI; optional isolated verification for the exported Windows build.
 
 const FarmView = preload("res://scripts/world/farm_view.gd")
 const ToolBar = preload("res://scripts/ui/tool_bar.gd")
@@ -24,6 +24,7 @@ const ACCENT := Color("a9c18b")
 var _qa_frames: int = 0
 var _smoke_test: bool = false
 var _capture_path: String = ""
+var _release_verifier: RefCounted
 var farm_view: FarmView
 var tool_bar: ToolBar
 var time_bar: TimeBar
@@ -76,16 +77,31 @@ var _dialog_interaction: bool = true
 
 
 func _ready() -> void:
-	save_service = SaveService.new(str(get_meta("save_path", SaveService.DEFAULT_PATH)))
+	var verification_directory: String = ""
+	var verification_phase: String = ""
 	for argument in OS.get_cmdline_user_args():
 		if argument == "--smoke-test":
 			_smoke_test = true
 		elif argument.begins_with("--capture="):
 			_capture_path = argument.trim_prefix("--capture=")
+		elif argument.begins_with("--verify-release="):
+			verification_directory = argument.trim_prefix("--verify-release=")
+		elif argument.begins_with("--verify-phase="):
+			verification_phase = argument.trim_prefix("--verify-phase=")
+	if not verification_directory.is_empty() or not verification_phase.is_empty():
+		if not verification_directory.is_absolute_path() or verification_phase not in ["write", "read", "quit-save", "discard"]:
+			push_error("Release verification requires an absolute isolated directory and a known phase.")
+			get_tree().quit(1)
+			return
+		set_meta("save_path", verification_directory.path_join("farm-v6.json"))
+	save_service = SaveService.new(str(get_meta("save_path", SaveService.DEFAULT_PATH)))
 	_setup_theme()
 	_build_interface()
 	_setup_save_ui()
 	get_tree().set_auto_accept_quit(false)
+	if not verification_directory.is_empty():
+		_release_verifier = load("res://scripts/verification/release_verifier.gd").new()
+		_release_verifier.run.call_deferred(self, verification_directory, verification_phase)
 
 
 func _setup_theme() -> void:
@@ -491,7 +507,7 @@ func _request_load() -> void:
 		_pending_backup = true
 		_begin_dialog(load_dialog, "主存档无法读取：%s\n发现上一次有效备份（%s）。\n是否读取备份？当前未保存进度将被替换。" % [primary.message, _stamp(backup.game_minutes)])
 	elif primary.get("legacy", false):
-		_begin_dialog(load_dialog, "发现第 %d 版存档（%s）。\n将保留原文件，导入已有农场进度。\n当前未保存进度会被替换；导入后按 F5 保存到自动化版，是否继续？" % [int(primary.legacy_version), _stamp(primary.game_minutes)])
+		_begin_dialog(load_dialog, "发现第 %d 版存档（%s）。\n将保留原文件，导入已有农场进度。\n当前未保存进度会被替换；导入后按 F5 保存到当前 v6 档位，是否继续？" % [int(primary.legacy_version), _stamp(primary.game_minutes)])
 	elif _has_progress and _dirty:
 		_begin_dialog(load_dialog, "将读取 %s 的存档。\n当前未保存进度将被替换，是否继续？" % _stamp(primary.game_minutes))
 	else:
