@@ -534,3 +534,5 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\check-windows-packag
 - 普通 F5 / F9 使用同一 user://v6 路径，包验收四阶段只用 tmp 新槽，不冒称进行了玩家个人档写入试验。实际断电、另一台电脑 / 显卡、高 DPI 组合、Mac / ARM、扬声器听感和代码签名没有验收。
 
 **结论：第 14 步通过，原定第 0～14 步首版流程全部完成。** 本机交付 Windows ZIP、操作 / 已知限制、校验与许可，源码和复现流程同步仓库；二进制不作为 Git 文件或未经创建的 Release 附件。后续以实际试玩反馈与确认后的扩展为准。
+
+最终复验收据：构建源 `9f32e4b8b9731b0def1871774ed936a38e49e1d2`，source_dirty=false、checks_skipped=false，默认完整回归通过；最终 ZIP 38,347,794 字节，SHA-256 `73a86fb13b65f78a15a35e726d105317138575c2b3388ce6238146aaf55fe447`。最终解压原生启动与四阶段全部再次通过，证据目录 `tmp/qa/windows-package-c0d93b2403474a50b6c80deb620c2e52`。本段及 WORK_LOG 收据是构建后的纯文档补充，不改变包内源提交或已验程序。

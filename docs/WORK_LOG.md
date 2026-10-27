@@ -212,3 +212,9 @@
 - 六份现有相关文档同步当前第 0～14 步完成状态，新增 Windows 操作、存档共享 / 手动保存、未签名、已知限制与反馈说明；技术文档记录选型、校验、导出过滤、隔离验收及迭代中失败的真实原因。历史各阶段结论保留，不用新结果伪造旧验证。
 - 构建包清点为 EXE / PCK / 中文说明 / README / BUILD_INFO / 全文件 SHA / Godot LICENSE / COPYRIGHT 八项，不含引擎编辑器、源码测试、PDF、私人档或临时图。ZIP / 模板 / 缓存沿用忽略规则；包内本地源码文档链接已移除，避免交付后出现死链接。
 - 本步五项核心验收与 Windows 独立程序通过，准备提交源代码 / 文档，再从干净提交默认执行源码检查、重建最终 ZIP 并复验，最后核对远端。最终文件 SHA 和源提交写入构建产物，不在此事先填写未发生的提交号或开发临时哈希。
+
+### 最终包验收收据
+
+- 源码提交 `9f32e4b8b9731b0def1871774ed936a38e49e1d2` 后，默认 build-windows（未使用 SkipChecks）完整回归通过；最终 BUILD_INFO 确认 source_dirty=false / checks_skipped=false。
+- 最终 ZIP `builds/Fieldworks-0.1.0-playtest.1-windows-x86_64.zip` 为 38,347,794 字节，SHA-256 `73a86fb13b65f78a15a35e726d105317138575c2b3388ce6238146aaf55fe447`。重新解压的正常原生启动及 53 / 10 / 7 / 7 项再次通过，收据为 `tmp/qa/windows-package-c0d93b2403474a50b6c80deb620c2e52/package-result.json`。
+- 同一 ZIP 另解压至 `builds/Fieldworks-0.1.0-playtest.1-windows-x86_64/` 供直接双击 Fieldworks.exe，文件与已验包一致。此收据在构建后仅作文档补充提交，不修改已验证程序或重新生成时间戳，包内 source_commit 准确指向上述构建源。
