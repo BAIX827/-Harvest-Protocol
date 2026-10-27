@@ -3,6 +3,7 @@ extends Control
 
 signal opened
 signal closed
+signal comparison_requested
 
 const Economy = preload("res://scripts/simulation/economy_model.gd")
 const Clock = preload("res://scripts/simulation/simulation_clock.gd")
@@ -15,6 +16,7 @@ var buy_five: Dictionary = {}
 var sell_one: Dictionary = {}
 var sell_type: Dictionary = {}
 var sell_all_button: Button
+var comparison_button: Button
 var close_button: Button
 var receipt_label: Label
 var balance_label: Label
@@ -117,6 +119,8 @@ func _build() -> void:
 	heading.add_child(title)
 	balance_label = _label("", 22, Color("a9c18b"))
 	heading.add_child(balance_label)
+	comparison_button = _button("经营对照 [H]", func() -> void: comparison_requested.emit())
+	heading.add_child(comparison_button)
 	close_button = _button("返回农场  [B / Esc]", close_market)
 	heading.add_child(close_button)
 	summary_label = _label("")
@@ -205,7 +209,7 @@ func _refresh() -> void:
 		return
 	balance_label.text = "余额 %d 币" % economy.farm.cash
 	var totals := economy.totals()
-	summary_label.text = "累计销售 %d 币　累计支出 %d 币　净现金流 %s%d 币\n其中：种子 %d 币，补水 %d 币" % [totals.sales, totals.expenses, "+" if totals.net >= 0 else "", totals.net, totals.seed_purchase, totals.water]
+	summary_label.text = "累计销售 %d 币　累计支出 %d 币　净现金流 %s%d 币\n种子 %d · 补水 %d · 电费 %d · 设备 %d · 退款 %d · 应急 %d 币" % [totals.sales, totals.expenses, "+" if totals.net >= 0 else "", totals.net, totals.seed_purchase, totals.water, totals.energy, totals.equipment, totals.refunds, totals.recovery]
 	for id in economy.farm.SEED_ORDER:
 		var prices: Dictionary = economy.settings.crops[id]
 		_seed_labels[id].text = "持有 %d 份\n%d 币 / 份" % [int(economy.farm.seed_stock[id]), int(prices.seed_price)]

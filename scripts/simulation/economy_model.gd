@@ -81,6 +81,40 @@ func sell_all() -> Dictionary:
 	return _sell(amounts)
 
 
+func return_module(id: String, quantity: Variant = 1) -> Dictionary:
+	if farm.trade_in_progress: return _fail("busy", "上一笔交易正在完成。")
+	var item := ModuleCatalog.definition(id)
+	if item.is_empty() or not item.available: return _fail("unknown_item", "请选择已开放的库存模块。")
+	if not quantity is int or quantity < 1 or quantity > 1000: return _fail("invalid_quantity", "退货数量必须为 1～1000 的整数。")
+	if int(farm.parts_stock.get(id, 0)) < quantity: return _fail("insufficient_stock", "只能退备用库存，已装设备或已铺管段需先拆回。")
+	farm.trade_in_progress = true
+	var refund: int = int(item.price) * int(quantity)
+	farm.parts_stock[id] -= int(quantity)
+	farm.cash += refund
+	return _commit("equipment_return", "退回备用模块", refund, [{"id": id, "name": item.name, "quantity": quantity, "unit_price": int(item.price)}])
+
+
+func can_recover() -> bool:
+	var cheapest: int = 1000000
+	for id in FarmState.SEED_ORDER:
+		if int(farm.seed_stock[id]) > 0 or int(farm.produce_stock[id]) > 0: return false
+		cheapest = mini(cheapest, int(settings.crops[id].seed_price))
+	if farm.cash >= cheapest: return false
+	for plot in farm.plots:
+		if not plot.crop.is_empty(): return false
+	return true
+
+
+func recover() -> Dictionary:
+	if farm.trade_in_progress: return _fail("busy", "上一笔交易正在完成。")
+	if not can_recover(): return _fail("recovery_unavailable", "仅没有种子、在田作物或收成，且余额不足购买最低价种子时可领取。可先出售收成或退回备用模块。")
+	farm.trade_in_progress = true
+	var amount: int = int(FarmState.TutorialCatalog.config().recovery_cash)
+	farm.seed_stock.lettuce += 1
+	farm.cash += amount
+	return _commit("recovery", "应急周转：生菜种子 ×1 与补水备用金", amount, [{"id": "lettuce", "name": FarmState.SEED_NAMES.lettuce, "quantity": 1, "unit_price": 0}])
+
+
 func _sell(amounts: Dictionary) -> Dictionary:
 	if amounts.is_empty():
 		return _fail("empty_stock", "目前没有可出售的收成。")
@@ -136,17 +170,19 @@ func sale_value() -> int:
 
 
 func totals() -> Dictionary:
-	var result := {"sales": 0, "seed_purchase": 0, "water": 0, "energy": 0, "equipment": 0, "maintenance": 0, "expenses": 0, "net": 0}
+	var result := {"sales": 0, "refunds": 0, "recovery": 0, "seed_purchase": 0, "water": 0, "energy": 0, "equipment": 0, "maintenance": 0, "expenses": 0, "net": 0}
 	for entry in farm.ledger:
 		if entry.category == "opening":
 			continue
 		if int(entry.amount) > 0:
-			result.sales += int(entry.amount)
+			if entry.category == "produce_sale": result.sales += int(entry.amount)
+			elif entry.category == "equipment_return": result.refunds += int(entry.amount)
+			elif entry.category == "recovery": result.recovery += int(entry.amount)
 		else:
 			result.expenses -= int(entry.amount)
 			if result.has(entry.category):
 				result[entry.category] -= int(entry.amount)
-	result.net = int(result.sales) - int(result.expenses)
+	result.net = int(result.sales) + int(result.refunds) + int(result.recovery) - int(result.expenses)
 	return result
 
 

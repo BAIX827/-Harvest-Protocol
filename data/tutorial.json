@@ -1,0 +1,14 @@
+{
+  "recovery_cash": 2,
+  "steps": [
+    {"id":"plant","title":"第一块田：翻土、播种、人工浇水","destination":"farm"},
+    {"id":"harvest","title":"照料作物并收获","destination":"farm"},
+    {"id":"sell","title":"出售第一笔收成","destination":"B"},
+    {"id":"restock","title":"补购种子，建立下一轮经营","destination":"B"},
+    {"id":"manual","title":"组装设备，观察真实手动供水","destination":"E"},
+    {"id":"experiment","title":"用参考实验校准真实探头","destination":"L"},
+    {"id":"auto","title":"连接节点并实际自动供水","destination":"T"},
+    {"id":"fault","title":"完成一次真实故障与恢复","destination":"L"},
+    {"id":"improve","title":"自主调整阈值并验证运行","destination":"T"}
+  ]
+}

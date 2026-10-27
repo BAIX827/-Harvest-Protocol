@@ -50,6 +50,7 @@ func advance(real_seconds: float) -> int:
 		if _irrigation_changed: farm.engineering_changed.emit()
 		if _sensor_changed: farm.sensor_changed.emit()
 		if _automation_changed: farm.automation_changed.emit()
+		farm.journey_changed.emit()
 		if not _matured_this_batch.is_empty():
 			crops_matured.emit(_matured_this_batch.duplicate(true))
 	return steps
@@ -62,7 +63,15 @@ func _simulate_step(minutes: int, end_minutes: int) -> void:
 	var interval_kind := weather.kind
 	var daylight := clock.is_daylight_at(start_minutes)
 	if automation.evaluate(start_minutes): _automation_changed = true
+	var supply_mode: String = farm.automation.mode
+	var water_before: float = farm.engineering.delivered_l
+	var energy_before: float = farm.engineering.used_wh
 	if irrigation.advance(minutes): _irrigation_changed = true
+	var supplied: float = float(farm.engineering.delivered_l) - water_before
+	var spent: float = float(farm.engineering.used_wh) - energy_before
+	farm.journey.modes[supply_mode].liters += supplied
+	farm.journey.modes[supply_mode].wh += spent
+	farm.journey.modes[supply_mode].minutes += minutes
 	for y in range(FarmState.HEIGHT):
 		for x in range(FarmState.WIDTH):
 			var cell := Vector2i(x, y)
@@ -78,7 +87,8 @@ func _simulate_step(minutes: int, end_minutes: int) -> void:
 	if sensor.sample(end_minutes): _sensor_changed = true
 	if automation.evaluate(end_minutes): _automation_changed = true
 	step_completed.emit({"minutes": minutes, "start_minutes": start_minutes, "end_minutes": end_minutes,
-		"weather_kind": interval_kind, "weather": definition, "daylight": daylight})
+		"weather_kind": interval_kind, "weather": definition, "daylight": daylight,
+		"supply_mode": supply_mode, "supplied_l": supplied, "spent_wh": spent})
 
 
 func _water_rates(plot: Dictionary, definition: Dictionary, daylight: bool) -> Dictionary:

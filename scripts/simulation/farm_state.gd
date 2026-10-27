@@ -8,6 +8,7 @@ signal engineering_changed
 signal sensor_changed
 signal automation_changed
 signal learning_changed
+signal journey_changed
 
 const WIDTH: int = 24
 const HEIGHT: int = 24
@@ -20,6 +21,7 @@ const EconomyCatalog = preload("res://scripts/simulation/economy_catalog.gd")
 const SensorCatalog = preload("res://scripts/engineering/sensor_catalog.gd")
 const AutomationCatalog = preload("res://scripts/engineering/automation_catalog.gd")
 const LearningCatalog = preload("res://scripts/progression/learning_catalog.gd")
+const TutorialCatalog = preload("res://scripts/progression/tutorial_catalog.gd")
 static var SEED_ORDER: Array[String] = CropCatalog.ids()
 static var SEED_NAMES: Dictionary = CropCatalog.names()
 
@@ -51,6 +53,7 @@ var trade_in_progress: bool = false
 var sensor: Dictionary = SensorCatalog.initial_state()
 var automation: Dictionary = AutomationCatalog.initial_state()
 var learning: Dictionary = LearningCatalog.initial_state()
+var journey: Dictionary = TutorialCatalog.initial_state()
 var engineering: Dictionary = {
 	"tank": "", "pump": "", "power": "", "pipes": [], "enabled": false, "power_connected": true,
 	"water_l": 0.0, "energy_wh": 0.0, "water_loaded_l": 0.0, "energy_loaded_wh": 0.0,

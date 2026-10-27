@@ -112,6 +112,13 @@ func _run() -> void:
 		view.simulation.advance(0.05)
 		view.simulation.clock.set_paused(true)
 		_expect(view.farm.learning.fault.stage == "complete", "Require actual automatic recovery before serializing completed teaching.")
+		_expect(view.tutorial.begin_improvement().ok, "Begin an independent rule trial after fault recovery.")
+		var new_reading: float = view.simulation.sensor.current(view.simulation.clock.total_minutes).reading
+		view.simulation.automation.set_thresholds(new_reading + 0.5, new_reading + 5)
+		view.simulation.clock.set_paused(false)
+		view.simulation.advance(0.05)
+		view.simulation.clock.set_paused(true)
+		_expect(not view.farm.journey.improvement.proof.is_empty(), "New player-selected thresholds must actually deliver automatically before saving.")
 		view.simulation.clock.set_paused(false)
 		var band_steps: int = 0
 		while float(view.simulation.sensor.current(view.simulation.clock.total_minutes).reading) < float(view.farm.automation.start) and band_steps < 100:
@@ -134,6 +141,7 @@ func _run() -> void:
 		_expect(view.farm.automation.mode == "auto" and view.farm.automation.latch and view.farm.automation.output and view.farm.automation.code == "hold_on", "The open middle-band latch survives a new process.")
 		_expect(view.farm.sensor.installed and view.simulation.sensor.control_reading(view.simulation.clock.total_minutes).valid and view.farm.sensor.history.size() >= 5, "Calibrated readings, invalid-history gaps and noise state survive a new process.")
 		_expect(not view.farm.learning.experiment.is_empty() and view.farm.learning.fault.stage == "complete" and view.farm.learning.fault.repair.delivered_l > view.farm.learning.fault.resume.delivered_l, "Experimental raw evidence and real fault recovery survive a new process.")
+		_expect(not view.farm.journey.improvement.proof.is_empty() and view.farm.journey.manual.water == 3 and view.farm.journey.modes.auto.liters > 0, "Operation counts, mode accounting and independent rule evidence survive a new process.")
 		_expect(view.simulation.irrigation.status().running and view.farm.engineering.water_l > 0 and view.farm.engineering.water_l < 120.0 and view.farm.engineering.energy_wh > 0 and view.farm.engineering.energy_wh < 60.0, "Partially consumed water, energy and the connected switched-on kit survive process restart.")
 		_expect(not view.farm.plot_at(Vector2i(8, 12)).crop.is_empty() and not view.farm.plot_at(Vector2i(9, 12)).crop.is_empty(), "Unharvested crops remain in the field.")
 		_future(view)

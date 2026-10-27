@@ -83,11 +83,14 @@ func use(cell: Vector2i, actor: Vector2) -> Dictionary:
 		var payment := economy.refill_can()
 		if not payment.ok:
 			return _result(false, false, cell, payment.code, payment.message)
+		farm.journey.manual.refill += 1
+		farm.journey_changed.emit()
 		return _result(true, true, cell, "refill", "已补满水壶，可以浇水 %d 次，费用 %d 币。" % [FarmState.CAN_CAPACITY, fee])
 	if not farm.is_arable(cell):
 		return _result(false, false, cell, "not_arable", "%s不能耕作，请选择草地或裸土。" % farm.describe(cell).name)
 	var plot := farm.plot_at(cell)
 	var harvest_note: String = ""
+	var water_before: float = plot.moisture
 	match active_tool:
 		Tool.HOE:
 			if not plot.crop.is_empty():
@@ -123,6 +126,10 @@ func use(cell: Vector2i, actor: Vector2) -> Dictionary:
 			farm.produce_stock[crop_id] = int(farm.produce_stock.get(crop_id, 0)) + count
 			harvest_note = "已收获%s ×%d，放入农产品库存。" % [FarmState.SEED_NAMES[crop_id], count]
 			plot.crop = {}
+	farm.journey.manual[TOOL_IDS[active_tool]] += 1
+	if active_tool == Tool.WATER:
+		farm.journey.manual_water_l += (float(plot.moisture) - water_before) * float(Economy.ModuleCatalog.config().liters_per_moisture_point)
+	farm.journey_changed.emit()
 	farm.plot_changed.emit(cell)
 	farm.supplies_changed.emit()
 	var messages := {

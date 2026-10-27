@@ -16,6 +16,7 @@ const Economy = preload("res://scripts/simulation/economy_model.gd")
 const Engineering = preload("res://scripts/engineering/engineering_controller.gd")
 const SensorController = preload("res://scripts/engineering/sensor_controller.gd")
 const LearningController = preload("res://scripts/progression/learning_controller.gd")
+const TutorialController = preload("res://scripts/progression/tutorial_controller.gd")
 const TILE: float = 32.0
 
 var farm := FarmState.new()
@@ -26,6 +27,7 @@ var tools := ToolController.new(farm, economy)
 var engineering := Engineering.new(economy, simulation.irrigation)
 var sensor_controller := SensorController.new(economy, simulation.sensor)
 var learning := LearningController.new(farm, sensor_controller, simulation)
+var tutorial := TutorialController.new(farm, simulation, economy)
 var interaction_enabled: bool = true
 var selected_cell := Vector2i(8, 8)
 var hovered_cell := FarmState.INVALID_CELL

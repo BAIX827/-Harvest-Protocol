@@ -11,6 +11,7 @@ const EngineeringSnapshot = preload("res://scripts/engineering/engineering_snaps
 const SensorSnapshot = preload("res://scripts/engineering/sensor_snapshot.gd")
 const AutomationSnapshot = preload("res://scripts/engineering/automation_snapshot.gd")
 const LearningSnapshot = preload("res://scripts/progression/learning_snapshot.gd")
+const TutorialSnapshot = preload("res://scripts/progression/tutorial_snapshot.gd")
 const MAX_MINUTES: int = 525600000
 const MAX_CASH: int = 1000000000000
 
@@ -24,7 +25,7 @@ static func capture(view: Control, pause_override: Variant = null) -> Dictionary
 		"farm": {"width": Farm.WIDTH, "height": Farm.HEIGHT, "tiles": Array(farm.tiles), "plots": farm.plots.duplicate(true),
 			"seeds": farm.seed_stock.duplicate(true), "produce": farm.produce_stock.duplicate(true), "parts": farm.parts_stock.duplicate(true),
 			"cash": farm.cash, "water": farm.watering_charges, "ledger": farm.ledger.duplicate(true), "next_transaction_id": farm.next_transaction_id},
-		"runtime": runtime, "engineering": farm.engineering.duplicate(true), "sensor": farm.sensor.duplicate(true), "automation": farm.automation.duplicate(true), "learning": farm.learning.duplicate(true),
+		"runtime": runtime, "engineering": farm.engineering.duplicate(true), "sensor": farm.sensor.duplicate(true), "automation": farm.automation.duplicate(true), "learning": farm.learning.duplicate(true), "journey": farm.journey.duplicate(true),
 		"player": {"position": [view.player.position.x, view.player.position.y], "facing": [view.player.facing.x, view.player.facing.y], "walk_distance": view.player.walk_distance},
 		"view": {"selected_cell": [view.selected_cell.x, view.selected_cell.y], "show_grid": view.show_grid,
 			"tool": view.tools.active_tool, "seed": view.tools.selected_seed},
@@ -143,6 +144,9 @@ static func validate(payload: Variant) -> Dictionary:
 	farm.watering_charges = int(data.water)
 	farm.ledger.assign(ledger_result.entries)
 	farm.next_transaction_id = int(data.next_transaction_id)
+	var journey_result := TutorialSnapshot.validate(payload.get("journey"), farm, int(clock.total_minutes))
+	if not journey_result.ok: return journey_result
+	farm.journey = journey_result.state
 	var actor: Dictionary = payload.player
 	if not _pair(actor.get("position")) or not _pair(actor.get("facing")) or not number(actor.get("walk_distance"), 0, MAX_CASH):
 		return _bad("角色坐标或朝向无效。")
@@ -183,33 +187,42 @@ static func _ledger(value: Variant, next_id: Variant, cash: int, now: int) -> Di
 		if index == 0:
 			if category != "opening" or amount != int(config.starting_cash) or int(entry.minute) != 480 or not entry.items.is_empty():
 				return _bad("开场资金记录不匹配。")
-		elif category not in ["seed_purchase", "produce_sale", "water", "energy", "equipment", "maintenance"]:
+		elif category not in ["seed_purchase", "produce_sale", "water", "energy", "equipment", "equipment_return", "recovery", "maintenance"]:
 			return _bad("交易类别无效。")
 		var items: Array = []
-		if category in ["seed_purchase", "produce_sale", "equipment"]:
-			if entry.items.is_empty() or entry.items.size() > (9 if category == "equipment" else Farm.SEED_ORDER.size()) or (category == "seed_purchase" and entry.items.size() != 1):
+		if category == "recovery":
+			if amount != int(Farm.TutorialCatalog.config().recovery_cash) or entry.items.size() != 1: return _bad("应急周转金额或种子明细无效。")
+			var gift: Variant = entry.items[0]
+			if not gift is Dictionary or gift.get("id") != "lettuce" or gift.get("name") != Farm.SEED_NAMES.lettuce or not whole(gift.get("quantity"), 1, 1) or not whole(gift.get("unit_price"), 0, 0): return _bad("应急周转只包含一份生菜种子。")
+			bought.lettuce += 1
+			items.append({"id": "lettuce", "name": Farm.SEED_NAMES.lettuce, "quantity": 1, "unit_price": 0})
+		elif category in ["seed_purchase", "produce_sale", "equipment", "equipment_return"]:
+			var module_trade: bool = category in ["equipment", "equipment_return"]
+			if entry.items.is_empty() or entry.items.size() > (9 if module_trade else Farm.SEED_ORDER.size()) or (category == "seed_purchase" and entry.items.size() != 1):
 				return _bad("交易商品明细无效。")
 			var total: int = 0
 			var seen: Dictionary = {}
 			for item in entry.items:
 				if not item is Dictionary or not item.get("id") is String or seen.has(item.id):
 					return _bad("账本商品类型重复或无效。")
-				var module := ModuleCatalog.definition(item.id) if category == "equipment" else {}
-				if category == "equipment":
+				var module := ModuleCatalog.definition(item.id) if module_trade else {}
+				if module_trade:
 					if module.is_empty() or not module.available or item.get("name") != module.name: return _bad("账本模块类型无效。")
 				elif not Farm.SEED_NAMES.has(item.id) or item.get("name") != Farm.SEED_NAMES[item.id]: return _bad("账本农产品无效。")
 				if not whole(item.get("quantity"), 1, Economy.MAX_STOCK) or not whole(item.get("unit_price"), 1, 1000000):
 					return _bad("账本商品数量或单价无效。")
-				var expected_price: int = int(module.price) if category == "equipment" else int(config.crops[item.id].seed_price if category == "seed_purchase" else config.crops[item.id].produce_price)
+				var expected_price: int = int(module.price) if module_trade else int(config.crops[item.id].seed_price if category == "seed_purchase" else config.crops[item.id].produce_price)
 				if int(item.unit_price) != expected_price:
 					return _bad("账本单价与当前规则不匹配。")
 				seen[item.id] = true
 				total += int(item.quantity) * expected_price
-				if category == "equipment": acquired[item.id] = int(acquired.get(item.id, 0)) + int(item.quantity)
+				if module_trade:
+					acquired[item.id] = int(acquired.get(item.id, 0)) + int(item.quantity) * (-1 if category == "equipment_return" else 1)
+					if acquired[item.id] < 0: return _bad("模块退货超过此前采购量。")
 				elif category == "seed_purchase": bought[item.id] += int(item.quantity)
 				else: sold[item.id] += int(item.quantity)
 				items.append({"id": item.id, "name": item.name, "quantity": int(item.quantity), "unit_price": expected_price})
-			if amount != (total if category == "produce_sale" else -total):
+			if amount != (total if category in ["produce_sale", "equipment_return"] else -total):
 				return _bad("商品明细与结算金额不一致。")
 		elif index > 0 and (amount > 0 or not entry.items.is_empty()):
 			return _bad("费用记录方向或明细无效。")
@@ -235,6 +248,7 @@ static func apply(view: Control, candidate: Dictionary) -> void:
 	target.sensor = source.sensor.duplicate(true)
 	target.automation = source.automation.duplicate(true)
 	target.learning = source.learning.duplicate(true)
+	target.journey = source.journey.duplicate(true)
 	target.cash = source.cash
 	target.watering_charges = source.watering_charges
 	target.ledger.assign(source.ledger.duplicate(true))
@@ -257,6 +271,7 @@ static func apply(view: Control, candidate: Dictionary) -> void:
 	target.sensor_changed.emit()
 	target.automation_changed.emit()
 	target.learning_changed.emit()
+	target.journey_changed.emit()
 	view.tools.selection_changed.emit()
 	view.player_moved.emit(view.player.cell())
 	view.tile_selected.emit(view.selected_cell)
