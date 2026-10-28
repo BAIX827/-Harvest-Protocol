@@ -36,6 +36,9 @@ var status_label: Label
 var receipt_label: Label
 var preset_a: Button
 var preset_b: Button
+var next_label: Label
+var details_button: Button
+var _show_details: bool = false
 
 
 func setup(shared_controller: Controller) -> void:
@@ -44,6 +47,7 @@ func setup(shared_controller: Controller) -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	_build()
 	controller.farm.learning_changed.connect(_refresh)
+	controller.farm.sensor_changed.connect(_refresh)
 	controller.simulation.updated.connect(_refresh)
 	controller.simulation.clock.controls_changed.connect(_refresh)
 	visible = false
@@ -145,6 +149,9 @@ func _build() -> void:
 	header.add_child(title)
 	header.add_child(_button("返回农场 [L / Esc]", close_panel))
 	column.add_child(_paragraph("样杯与农场隔离，含水量控件不会给农田加水。校准需明确同步；故障任务在真实农场进行。保持原时间设置，可用空格暂停。"))
+	next_label = _paragraph("")
+	next_label.add_theme_color_override("font_color", CTheme.RUNNING)
+	column.add_child(next_label)
 	var time_row := HBoxContainer.new()
 	column.add_child(time_row)
 	pause_button = _button("", func() -> void: controller.simulation.clock.toggle_paused())
@@ -159,6 +166,7 @@ func _build() -> void:
 	column.add_child(status_label)
 	tabs = TabContainer.new()
 	tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	tabs.tab_changed.connect(func(_index: int) -> void: _refresh())
 	column.add_child(tabs)
 	var experiment := _tab("参考实验")
 	var left := VBoxContainer.new()
@@ -209,11 +217,19 @@ func _build() -> void:
 	left.add_child(apply_button)
 	left.add_child(_paragraph("A / B 至少相隔 10 个百分点。单换已知水分保留参考点；换土壤 / 安装响应会清除参考点。中点复核使用独立的新噪声样本。"))
 	left.add_child(_paragraph("同步会改变农场探头的响应条件和校准系数，保留探头位置和真实水分。当前仅为游戏简化模型，不是实际仪器标定。"))
+	var results := VBoxContainer.new()
+	results.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	experiment.add_child(results)
+	details_button = _button("展开电压、ADC、系数与容差", func() -> void:
+		_show_details = not _show_details
+		_refresh())
+	results.add_child(details_button)
 	experiment_label = RichTextLabel.new()
 	experiment_label.custom_minimum_size = Vector2(620, 530)
 	experiment_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	experiment_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	experiment_label.add_theme_font_size_override("normal_font_size", 19)
-	experiment.add_child(experiment_label)
+	results.add_child(experiment_label)
 	var fault := _tab("故障教学")
 	var actions := VBoxContainer.new()
 	actions.custom_minimum_size.x = 520
@@ -275,15 +291,29 @@ func _result(result: Dictionary) -> void:
 
 func _row_text(row: Dictionary) -> String:
 	if row.is_empty() or row.get("code") == "missing": return "尚未采样，请设置样杯并记录参考点。"
+	if row.get("raw_adc") == null or row.get("truth") == null: return "信号无效"
+	if not _show_details: return "已知水分 %.2f%% · 测得 %s" % [row.truth, "%.2f%%" % row.reading if row.valid else "无效"]
 	return "参考 %.2f%% · %.4f V · ADC %d\n出厂换算 %.2f%% · 读数 %s" % [row.truth, row.volts, row.raw_adc, row.factory, "%.2f%%" % row.reading if row.valid else "无效"] if row.raw_adc != null else "信号无效"
 
 
+func experiment_hint() -> String:
+	var lab: Dictionary = controller.farm.learning.lab
+	if not controller.farm.learning.experiment.is_empty(): return "校准已同步到真实探头。下一步：按 T 准备自动控制；故障教学可在另一个标签查看。"
+	if lab.points.is_empty(): return "下一步：选「黏土 / 接触良好」，点击「20% 样杯」，再「记录参考 A」。预期得到第一个已知水分与读数。"
+	if lab.points.size() == 1: return "下一步：保持相同土壤和安装条件，点击「40% 样杯」，再「记录参考 B」。换响应条件会清空 A。"
+	if not Controller.verified(lab.points, lab.verification): return "下一步：点击「两点校准 + 中点新采样复核」。预期看到 %.1f%% 中点的前后误差；未达标可重新记录 A / B。" % [(float(lab.points[0].truth) + float(lab.points[1].truth)) / 2.0]
+	if not controller.farm.sensor.installed: return "复核达标。下一步：按 I 采购并安装真实探头，再回 L 点击「同步条件与系数」。未安装不能同步。"
+	return "复核达标。下一步：点击「同步条件与系数到农场探头」。成功后才完成校准目标，不会改变农田水分。"
+
+
 func _refresh() -> void:
-	if tabs == null: return
+	if tabs == null or task_label == null: return
 	var state: Dictionary = controller.farm.learning
 	var lab: Dictionary = state.lab
 	var task: Dictionary = state.fault
 	var config := Catalog.config()
+	next_label.text = experiment_hint() if tabs.current_tab == 0 else controller.hint()
+	details_button.text = "收起电压、ADC、系数与容差" if _show_details else "展开电压、ADC、系数与容差"
 	pause_button.text = "继续 [空格]" if controller.simulation.clock.paused else "暂停 [空格]"
 	status_label.text = "实验：%s　故障：%s" % ["已同步完成" if not state.experiment.is_empty() else "待完成", {"idle": "待开始", "observe": "待观察", "diagnose": "待诊断", "repair": "待真实恢复", "complete": "已验证完成"}[task.stage]]
 	CTheme.status(status_label, "running" if task.stage == "complete" else ("warning" if task.stage in ["observe", "diagnose", "repair"] else "stopped"))
@@ -291,8 +321,10 @@ func _refresh() -> void:
 	for index in range(lab.points.size()): lines.append("参考 %s\n%s\n" % ["A" if index == 0 else "B", _row_text(lab.points[index])])
 	if not lab.verification.is_empty():
 		var row: Dictionary = lab.verification
-		lines.append("中点复核\n%s\n未校准误差 %+.3f 个百分点\n校准后误差 %s\n系数 %.5f / %+.5f\n%s" % [_row_text(row), float(row.factory) - float(row.truth), "%+.3f 个百分点" % (float(row.reading) - float(row.truth)) if row.valid else "无效", row.slope, row.offset, "复核达标" if Controller.verified(lab.points, row) else "复核未达标"])
-	lines.append("\n容差 ≤%.2f 个百分点，改善 ≥%.2f 个百分点。\n已有农场校准任务：%s" % [config.verification_tolerance, config.improvement_min, "完成" if not state.experiment.is_empty() else "未同步"])
+		lines.append("中点复核\n%s\n未校准误差 %+.3f 个百分点\n校准后误差 %s\n%s" % [_row_text(row), float(row.factory) - float(row.truth), "%+.3f 个百分点" % (float(row.reading) - float(row.truth)) if row.valid else "无效", "复核达标" if Controller.verified(lab.points, row) else "复核未达标"])
+		if _show_details: lines.append("系数 %.5f / %+.5f" % [row.slope, row.offset])
+	if _show_details: lines.append("\n容差 ≤%.2f 个百分点，改善 ≥%.2f 个百分点。" % [config.verification_tolerance, config.improvement_min])
+	lines.append("\n农场校准任务：%s" % ["已同步完成" if not state.experiment.is_empty() else "未同步"])
 	experiment_label.text = "\n".join(lines)
 	apply_button.disabled = not Controller.verified(lab.points, lab.verification)
 	calibrate_button.disabled = not Controller.solve(lab.points).ok

@@ -33,9 +33,9 @@ var sensor_controller := SensorController.new(economy, simulation.sensor)
 var learning := LearningController.new(farm, sensor_controller, simulation)
 var tutorial := TutorialController.new(farm, simulation, economy)
 var action_audio := ActionAudio.new()
-var zoom_level: int = 1
+var zoom_level: int = 2
 var interaction_enabled: bool = true
-var selected_cell := Vector2i(8, 8)
+var selected_cell := Vector2i(7, 12)
 var hovered_cell := FarmState.INVALID_CELL
 var show_grid: bool = false
 var _last_player_cell := FarmState.INVALID_CELL
@@ -94,6 +94,9 @@ func _register_input() -> void:
 			var key := InputEventKey.new()
 			key.physical_keycode = code
 			InputMap.action_add_event(action, key)
+			var logical := InputEventKey.new()
+			logical.keycode = code
+			InputMap.action_add_event(action, logical)
 
 
 func geometry() -> Rect2:
@@ -148,22 +151,23 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	if not interaction_enabled:
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
-		if event.physical_keycode >= KEY_1 and event.physical_keycode <= KEY_5:
-			tools.select_tool(event.physical_keycode - KEY_1)
+		var code: int = event.keycode if event.keycode != KEY_NONE else event.physical_keycode
+		if code >= KEY_1 and code <= KEY_5:
+			tools.select_tool(code - KEY_1)
 			get_viewport().set_input_as_handled()
-		elif event.physical_keycode == KEY_Q:
+		elif code == KEY_Q:
 			tools.cycle_seed()
 			get_viewport().set_input_as_handled()
-		elif event.physical_keycode == KEY_G:
+		elif code == KEY_G:
 			toggle_grid()
 			get_viewport().set_input_as_handled()
-		elif event.physical_keycode == KEY_R:
+		elif code == KEY_R:
 			reset_player()
 			get_viewport().set_input_as_handled()
-		elif event.physical_keycode == KEY_F:
+		elif code == KEY_F:
 			toggle_zoom()
 			get_viewport().set_input_as_handled()
-		elif event.physical_keycode == KEY_M:
+		elif code == KEY_M:
 			toggle_sound()
 			get_viewport().set_input_as_handled()
 
@@ -203,7 +207,6 @@ func reset_player() -> void:
 
 
 func reset_transient_state() -> void:
-	zoom_level = 1
 	_recent_supply = 0.0
 	view_controls_changed.emit()
 	hovered_cell = FarmState.INVALID_CELL

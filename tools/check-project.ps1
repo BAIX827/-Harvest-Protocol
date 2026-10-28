@@ -39,6 +39,7 @@ Invoke-GodotCheck -CheckName 'automation' -EngineArguments @('--headless', '--pa
 Invoke-GodotCheck -CheckName 'learning' -EngineArguments @('--headless', '--path', $projectRoot, '--script', 'res://tests/test_learning.gd') -SuccessMarker 'FIELDWORKS_LEARNING_TESTS_OK'
 Invoke-GodotCheck -CheckName 'tutorial' -EngineArguments @('--headless', '--path', $projectRoot, '--script', 'res://tests/test_tutorial.gd') -SuccessMarker 'FIELDWORKS_TUTORIAL_TESTS_OK'
 Invoke-GodotCheck -CheckName 'presentation' -EngineArguments @('--headless', '--path', $projectRoot, '--script', 'res://tests/test_presentation.gd') -SuccessMarker 'FIELDWORKS_PRESENTATION_TESTS_OK'
+Invoke-GodotCheck -CheckName 'playtest-feedback' -EngineArguments @('--headless', '--path', $projectRoot, '--script', 'res://tests/test_playtest_feedback.gd') -SuccessMarker 'FIELDWORKS_PLAYTEST_FEEDBACK_OK'
 $saveProcessDirectory = Join-Path $qaDirectory ('save-process-' + [guid]::NewGuid().ToString('N'))
 Invoke-GodotCheck -CheckName 'save-write-process' -EngineArguments @('--headless', '--path', $projectRoot, '--script', 'res://tests/test_save_process.gd', '--', 'write', $saveProcessDirectory) -SuccessMarker 'FIELDWORKS_SAVE_PROCESS_WRITE_OK'
 Invoke-GodotCheck -CheckName 'save-read-process' -EngineArguments @('--headless', '--path', $projectRoot, '--script', 'res://tests/test_save_process.gd', '--', 'read', $saveProcessDirectory) -SuccessMarker 'FIELDWORKS_SAVE_PROCESS_READ_OK'

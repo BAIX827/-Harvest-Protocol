@@ -395,3 +395,15 @@
 - 四阶段以独立操作系统进程运行：write 完成九目标、保存实际运行的自动前态；read 精确比较全部持久字段并实际继续供水、取消退出；quit-save 用实际按钮写档；discard 在新进程精确读回后修改，并确认真实放弃信号且原文件字节不变。输出仅在隔离目录，留日志 / JSON / 截图，不上传测试档。
 - `check-windows-package.ps1` 核对归档条目位于全新 tmp 解压目录、八文件清单与完整 SHA-256 覆盖，在中文 / 空格路径以同目录 PCK 运行。先走无验收覆盖的正常 smoke 启动（不写玩家档），再跑四个原生阶段；退出码、日志错误、标记与 JSON 结果都纳入通过条件。
 - 不改生产参数和 Codec，继续 v6 及已有 v1～v5 兼容；旧档提示文案改为“当前 v6 档位”。本步通过 Windows 首版交付，Mac / ARM、多设备与高 DPI、签名、实际断电和完整概念设施不在已验证范围。
+
+## 2026-10-28 · 玩家反馈定向修复规格（替代早期相应呈现约定）
+
+- 技术保持 Godot 4.7.2 / GDScript / Compatibility，无依赖升级。复用原生 Control、InputEventKey、InputMap，未引入新任务系统。官方 InputEventKey 区分逻辑快捷键与物理位置；本机注入复现物理码异常后，快捷键优先 keycode、缺失时回退 physical_keycode，移动分别绑定物理与逻辑事件。输入框 / Popup 的既有消费顺序保留；不以兼容处理宣称支持全部键盘布局。
+- TutorialController 的 care_hint 直接读取当前作物 / 地块，安全人工浇水条件为 moisture ≤ optimal_max − ToolController.WATER_INCREMENT。湿润时允许等待，成熟优先收获；rows 的真实证据判定不变，绝不因提示或等待发放人工浇水计数。
+- assembly_hint 依次核对模块库存和安装、真实连通路径、供电、水、电、覆盖地需求、手动模式与开关。已饱和的翻土地提示等待回落。automatic_hint 核对控制器、每条逻辑边、实际探头 / 翻土地 / 覆盖、测量、物理前置、模式与阈值；只是建议，不代装设备 / 改阈值 / 给水。
+- L 的下一步由已有参考点、中点复核、真实探头安装和显式同步状态推导；默认保留已知水分、读数、校准前后误差和结果，电压 / ADC / 系数 / 容差可展开。E 的性能 / 配水原理同样默认收起，保护和具体失败原因仍可见。无效样杯不格式化 null 数值。
+- FarmView 默认 zoom_level=2、selected_cell=(7,12)（内部零起点）；读档 reset_transient_state 不再覆盖会话缩放，仍清旧动画 / 悬停。未修改 v6、价格、周期或水量参数；声音依旧重启关闭。
+- 主界面缓存真实九目标的 done 状态，只在本次会话 false→true 时显示 8 秒完成与总进度；_restoring 期间刷新缓存并清提示，读档不会重播已存目标。提示不写入存档，也不会奖励资源。
+- 新 test_playtest_feedback.gd 接入 check-project；基于报告湿度、实际操作、安装前置、无效探头、键码不一致、菜单输入、读档与两尺寸验证。旧 world 四角测试显式切全图，呈现测试遵循新默认 / 会话约定，原点击 / 守恒断言保留。
+
+参考官方资料：[InputEventKey](https://docs.godotengine.org/en/stable/classes/class_inputeventkey.html)、[Using InputEvent](https://docs.godotengine.org/en/stable/tutorials/inputs/inputevent.html)。引用用于原生 API 语义，不代表引擎升级或对所有外设验证完成。

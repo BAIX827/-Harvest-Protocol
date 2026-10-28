@@ -138,6 +138,7 @@ func _test_native() -> void:
 	await process_frame
 	await process_frame
 	_expect(not view.action_audio.enabled and view.action_audio.play_count == 0, "Action sound defaults off with no idle playback.")
+	view.set_zoom(1)
 	var persistent := _json(Codec.capture(view))
 	await _button(app.zoom_button)
 	await _button(app.sound_button)
@@ -236,7 +237,7 @@ func _test_native() -> void:
 	view.set_zoom(2)
 	_expect(app._save_game().ok and app.save_service.read().ok, "The unchanged v6 format still saves the complete game after presentation changes.")
 	app._perform_load(false)
-	_expect(view.zoom_level == 1 and view.interaction_enabled, "Loading returns to a safe full-map view without changing the game save format.")
+	_expect(view.zoom_level == 2 and view.interaction_enabled, "Loading preserves the current near view without changing the game save format.")
 	app.queue_free()
 	await process_frame
 

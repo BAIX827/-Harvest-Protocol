@@ -9,6 +9,7 @@ const Controller = preload("res://scripts/engineering/automation_controller.gd")
 const Catalog = preload("res://scripts/engineering/automation_catalog.gd")
 const Modules = preload("res://scripts/engineering/module_catalog.gd")
 const Chart = preload("res://scripts/ui/history_chart.gd")
+const Tutorial = preload("res://scripts/progression/tutorial_controller.gd")
 var controller: Controller
 var economy: RefCounted
 var _frame: Panel
@@ -30,6 +31,7 @@ var status_label: Label
 var receipt_label: Label
 var log_label: RichTextLabel
 var chart: Chart
+var next_label: Label
 
 
 func setup(shared_controller: Controller, shared_economy: RefCounted) -> void:
@@ -118,6 +120,9 @@ func _build() -> void:
 	header.add_child(title)
 	header.add_child(_button("返回农场 [T / Esc]", close_panel))
 	column.add_child(_paragraph("拖动端口连接：探头 → 判断 → 水泵；可从输入端拆线。节点拖动位置会保存。自动模式只用有效读数，保护停机优先。"))
+	next_label = _paragraph("")
+	next_label.add_theme_color_override("font_color", CTheme.RUNNING)
+	column.add_child(next_label)
 	var hardware := HBoxContainer.new()
 	column.add_child(hardware)
 	buy_button = _button("采购控制器", func() -> void: _result(economy.buy_modules({"controller_basic": 1})))
@@ -206,6 +211,8 @@ func _result(result: Dictionary) -> void:
 
 
 func _refresh() -> void:
+	if next_label != null:
+		next_label.text = Tutorial.automatic_hint(economy.farm, controller.network, controller.sensor.current(economy.clock.total_minutes), controller.sensor.point(), economy.clock.paused)
 	if graph == null: return
 	var state: Dictionary = economy.farm.automation
 	var price := int(Modules.definition("controller_basic").price)

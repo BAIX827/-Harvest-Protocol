@@ -37,6 +37,9 @@ var lab_button: LinkButton
 var tutorial_panel: TutorialPanel
 var tutorial_button: LinkButton
 var _guide_label: Label
+var _milestone_label: Label
+var _guide_done: Dictionary = {}
+var _milestone_seconds: float = 0.0
 var zoom_button: LinkButton
 var sound_button: LinkButton
 var panel_menus: Dictionary = {}
@@ -214,6 +217,9 @@ func _build_interface() -> void:
 	_guide_label = _paragraph("", 16, ACCENT)
 	_guide_label.custom_minimum_size.y = 44
 	preview_column.add_child(_guide_label)
+	_milestone_label = _paragraph("", 16, ACCENT)
+	_milestone_label.hide()
+	preview_column.add_child(_milestone_label)
 	farm_view.name = "FarmView"
 	farm_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	farm_view.custom_minimum_size = Vector2(480, 440)
@@ -314,7 +320,7 @@ func _build_interface() -> void:
 	save_status = _label("尚未存档", 14, MUTED)
 	save_status.tooltip_text = save_service.path
 	column.add_child(save_status)
-	_feedback_label = _label("先走到附近的草地，按 2 锄地，再按 3 播种、按 4 浇水。", 17, MUTED)
+	_feedback_label = _label("先走近入口右上的目标地块，按 2 翻土；顶部会提示下一步和浇水时机。", 17, MUTED)
 	root.add_child(_feedback_label)
 	_refresh_inspector(farm_view.selected_cell)
 	_refresh_player(farm_view.player.cell())
@@ -370,6 +376,7 @@ func _build_interface() -> void:
 	for key in ["journey_changed", "learning_changed", "economy_changed", "supplies_changed", "engineering_changed", "sensor_changed", "automation_changed"]:
 		farm_view.farm.connect(key, _refresh_guidance)
 	farm_view.simulation.updated.connect(_refresh_guidance)
+	farm_view.simulation.clock.controls_changed.connect(_refresh_guidance)
 	_refresh_guidance()
 	farm_view.farm.automation_changed.connect(_refresh_engineering)
 	farm_view.farm.sensor_changed.connect(_refresh_sensor_shortcut)
@@ -705,6 +712,23 @@ func _tutorial_navigate(destination: String) -> void:
 
 func _refresh_guidance() -> void:
 	if _guide_label == null: return
+	var rows := farm_view.tutorial.rows()
+	var completed: Array[String] = []
+	var count: int = 0
+	for step in rows:
+		if step.done:
+			count += 1
+			if not _guide_done.is_empty() and not _guide_done.get(step.id, false): completed.append(step.title)
+	var announced: bool = not _guide_done.is_empty()
+	_guide_done.clear()
+	for step in rows: _guide_done[step.id] = step.done
+	if _restoring:
+		_milestone_seconds = 0
+		_milestone_label.hide()
+	elif announced and not completed.is_empty():
+		_milestone_label.text = "已完成：%s · 进度 %d / %d" % ["、".join(completed), count, rows.size()]
+		_milestone_seconds = 8.0
+		_milestone_label.show()
 	var row := farm_view.tutorial.current()
 	_guide_label.text = "当前目标：%s · H 查看路线\n%s" % [row.title, farm_view.tutorial.hint()]
 
@@ -761,7 +785,7 @@ func _input(event: InputEvent) -> void:
 	for popup in get_viewport().get_embedded_subwindows():
 		if popup is Popup and popup.visible: return
 	if not event is InputEventKey or not event.pressed or event.echo: return
-	var code: int = event.physical_keycode
+	var code: int = event.keycode if event.keycode != KEY_NONE else event.physical_keycode
 	var focus := get_viewport().gui_get_focus_owner()
 	if focus is LineEdit:
 		if code == KEY_ESCAPE:
@@ -820,17 +844,21 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	for popup in get_viewport().get_embedded_subwindows():
 		if popup is Popup and popup.visible: return
 	if event is InputEventKey and event.pressed and not event.echo:
-		if event.physical_keycode == KEY_SPACE:
+		var code: int = event.keycode if event.keycode != KEY_NONE else event.physical_keycode
+		if code == KEY_SPACE:
 			farm_view.simulation.clock.toggle_paused()
-		elif event.physical_keycode == KEY_F5:
+		elif code == KEY_F5:
 			_save_game()
-		elif event.physical_keycode == KEY_F9:
+		elif code == KEY_F9:
 			_request_load()
 		else: return
 		get_viewport().set_input_as_handled()
 
 
 func _process(_delta: float) -> void:
+	if _milestone_seconds > 0:
+		_milestone_seconds = maxf(0, _milestone_seconds - _delta)
+		if _milestone_seconds == 0: _milestone_label.hide()
 	if not _smoke_test and _capture_path.is_empty():
 		return
 	_qa_frames += 1

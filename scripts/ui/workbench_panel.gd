@@ -10,6 +10,7 @@ const Controller = preload("res://scripts/engineering/engineering_controller.gd"
 const Network = preload("res://scripts/engineering/irrigation_network.gd")
 const Catalog = preload("res://scripts/engineering/module_catalog.gd")
 const Clock = preload("res://scripts/simulation/simulation_clock.gd")
+const Tutorial = preload("res://scripts/progression/tutorial_controller.gd")
 var engineering: Controller
 var clock: Clock
 var _previous_pause: bool = false
@@ -30,6 +31,9 @@ var status_label: Label
 var resources_label: Label
 var balance_label: Label
 var plan_label: Label
+var next_label: Label
+var details_button: Button
+var _details: Array[Control] = []
 
 
 func setup(controller: Controller, shared_clock: Clock) -> void:
@@ -121,7 +125,10 @@ func _build() -> void:
 	header.add_child(balance_label)
 	close_button = _button("返回农场  [E / Esc]", close_workbench)
 	header.add_child(close_button)
-	column.add_child(_paragraph("编辑时暂停模拟；关闭工作台后恢复原速度。先采购并安装三种模块，再连接管路、补水充电并打开手动开关。"))
+	column.add_child(_paragraph("编辑时暂停模拟；返回农场后恢复进入前的时间。按下面的一项下一步继续，也可自由选择设备。"))
+	next_label = _paragraph("")
+	next_label.add_theme_color_override("font_color", CTheme.RUNNING)
+	column.add_child(next_label)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -156,6 +163,8 @@ func _build() -> void:
 	left.add_child(HSeparator.new())
 	plan_label = _paragraph("")
 	left.add_child(plan_label)
+	_details.append(plan_label)
+	plan_label.hide()
 	resources_label = _label("")
 	left.add_child(resources_label)
 	var refill_row := HBoxContainer.new()
@@ -200,7 +209,14 @@ func _build() -> void:
 	buy_pipe_button = _button("", func() -> void: _result(engineering.buy("pipe", 5)))
 	right.add_child(buy_pipe_button)
 	right.add_child(_paragraph("最短示例：泵 (10,7) → 管 (10,8) → (11,8) → (12,8) → 出口 (12,9)。覆盖 (11～13,9～10) 的六块翻土地。"))
-	right.add_child(_paragraph("1 L 水按 1 m² 地块、200 mm 等效土层换算为 0.5 个含水量百分点；均分到覆盖区需要水的翻土地。泵实际出水才耗能，缺水或断路不空耗。均为游戏原型参数。"))
+	details_button = _button("展开性能与配水原理", func() -> void:
+		for item in _details: item.visible = not item.visible
+		details_button.text = "收起性能与配水原理" if plan_label.visible else "展开性能与配水原理")
+	right.add_child(details_button)
+	var principle := _paragraph("1 L 水按 1 m² 地块、200 mm 等效土层换算为 0.5 个含水量百分点；均分到覆盖区需要水的翻土地。泵实际出水才耗能，缺水或断路不空耗。均为游戏原型参数。")
+	right.add_child(principle)
+	principle.hide()
+	_details.append(principle)
 	receipt_label = _paragraph("选择模块可以预览价格和性能。采购入库后，点击安装库存。")
 	column.add_child(receipt_label)
 
@@ -235,6 +251,12 @@ func _refresh() -> void:
 	var farm := engineering.economy.farm
 	var state: Dictionary = farm.engineering
 	var network := engineering.network
+	if farm.journey.modes.manual.liters <= 0:
+		next_label.text = Tutorial.assembly_hint(farm, network, _previous_pause)
+	else:
+		var next := "按 L 继续校准。" if farm.learning.experiment.is_empty() else ("按 T 继续自动控制。" if farm.journey.modes.auto.liters <= 0 else "按 H 查看后续目标与经营记录。")
+		if state.enabled and farm.automation.mode == "manual": next = "先关闭手动泵，再" + next
+		next_label.text = "手动供水已验证：%.2f L / %.2f Wh。%s 下方仍可调整设备。" % [farm.journey.modes.manual.liters, farm.journey.modes.manual.wh, next]
 	balance_label.text = "资金 %d 币　" % farm.cash
 	var total: int = 0
 	for kind in choices:

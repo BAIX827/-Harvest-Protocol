@@ -80,6 +80,8 @@ func _test_viewport_picking() -> void:
 	var view: Control = app.farm_view
 	if DisplayServer.get_name() != "headless":
 		await _test_keyboard_routing(app)
+	# This scenario clicks every corner of the farm; near-view picking is covered separately.
+	view.set_zoom(1)
 	for viewport_size in [Vector2i(1600, 1000), Vector2i(1280, 800), Vector2i(1152, 720)]:
 		root.size = viewport_size
 		await process_frame
