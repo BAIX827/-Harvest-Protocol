@@ -570,3 +570,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\check-windows-packag
 迭代中发现并修正：受限环境编辑器 user:// 无法打开（正常环境重跑）；新增主题常量与测试 API / mount 键名误用；默认近景使旧四角测试需显式全图；无效测量摘要曾格式化 null，已加保护并通过完整故障路线。最终日志无 SCRIPT ERROR / ERROR。截图 / 日志在 tmp/qa/feedback-fix，存档不提交；两张原始运行截图归档 docs/images。
 
 源码阶段已通过；新版 Windows 包准备以独立构建和解压验收收据另记。未新增 Mac、其他硬件 / DPI、扬声器听感或实际断电验证，也尚无未读说明的真人新手回访。
+
+### 修复版 Windows 独立包收据
+
+- 从干净源码提交 `15c5b6f221e422635164f1cbf844b36f5ddf9cce` 默认执行 `tools/build-windows.ps1`；完整检查重新通过，`checks_skipped=false`、`source_dirty=false`。固定引擎和模板仍为 4.7.2。
+- 产物：`builds/Fieldworks-0.1.0-playtest.2-windows-x86_64.zip`；SHA-256：`7ebc4223d2324105c9323d3da635ff6e03feaa63315c59fc080424a4f3fc0633`。随附 `.sha256` 及包内八文件 / SHA256SUMS 校验通过。
+- `tools/check-windows-package.ps1` 将 ZIP 解压到全新中文 / 空格目录，独立 EXE 正常启动通过；write 53、read 10、quit-save 7、discard 7，共 77 项原生检查通过。运行中保存、新进程续接、保存退出与放弃退出均验证，日志无引擎 / 脚本错误。
+- 已查看独立程序农场与 1152×720 路线截图，新目标提示与阶段反馈在导出程序中可见。验收收据在 `tmp/qa/windows-package-f584d73d306042a0889c928acd5e6925/package-result.json`；测试档全部隔离。
+- 当前 .2 已完成本机 Windows 包验收；旧 .1 包保留历史，不生成虚构 GitHub Release 链接。随后提交仅追加文档收据，不改变包的 owning code / config；包内 BUILD_INFO 始终指向上述真实构建提交。
